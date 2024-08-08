@@ -16,7 +16,7 @@
 			</div>
 		</div>
 		<div class="container-bottom">
-            <!-- <div class="container-bottom-1" style="width:200px;background-color:#ccc;border-radius: 4px;">
+			<!-- <div class="container-bottom-1" style="width:200px;background-color:#ccc;border-radius: 4px;">
                 
             </div> -->
 			<div class="container-bottom-left">
@@ -55,10 +55,35 @@
 </template>
 
 <script setup lang="ts" name="Home">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ipcRenderer } from 'electron'
+import { LogLevel, Room, RoomEvent, setLogExtension, Track } from 'livekit-client'
 const value = ref<string[]>([])
 const input = ref<string>('')
+const webrtcWss = ref<string>('ws://192.168.0.87:7880')
+const webrtcToken = ref<string>('')
+let room = null
+const participants = ref([])
+const isDevelopment = ref<boolean>(process.env.NODE_ENV === 'development' ? true : false)
+const startSharing = async function (sourceId) {
+	const stream = await navigator.mediaDevices.getUserMedia({
+		audio: false,
+		video: {
+			mandatory: {
+				chromeMediaSource: 'desktop',
+				chromeMediaSourceId: sourceId,
+			},
+		},
+	})
+	console.log('stream', stream)
+	const screenTrack = stream.getVideoTracks()[0]
+	console.log('screenTrack', screenTrack)
+	room.localParticipant.publishTrack(screenTrack, {
+		name: '屏幕分享',
+		source: Track.Source.ScreenShare,
+		stopMicTrackOnMute: true,
+	})
+}
 const options = [
 	{
 		value: 'HTML',
@@ -82,6 +107,131 @@ const concatOtherComputed = function (): void {
 		resizable: true,
 	})
 }
+/**
+ * @description:获取token
+ */
+const getToken = function () {
+	ipcRenderer
+		.invoke('create-token-spec', '111', '222', '3333')
+		.then((token) => {
+			console.log('获取到的token', token)
+			webrtcToken.value = token
+			liveKitRoomInit()
+		})
+		.catch((error) => {
+			console.log('error', error)
+		})
+}
+const liveKitRoomInit = async function () {
+	try {
+		// 初始化房间
+		room = new Room({
+			// automatically manage subscribed video quality
+			adaptiveStream: false,
+			// optimize publishing bandwidth and CPU for published tracks
+			dynacast: false,
+			publishDefaults: {
+				videoCodec: 'h264',
+			},
+		})
+		// 轨道订阅
+		room.on(RoomEvent.TrackSubscribed, await handleTrackSubscribed)
+			// 取消订阅
+			.on(RoomEvent.TrackUnsubscribed, await handleTrackSubscribed)
+			.on(RoomEvent.ParticipantConnected, onParticipantsChanged)
+			.on(RoomEvent.ParticipantDisconnected, onParticipantsChanged)
+			//连接质量修改
+			.on(RoomEvent.ConnectionQualityChanged, onParticipantsChanged)
+			// // 断开的
+			.on(RoomEvent.Disconnected, handleDisconnect)
+			// 房间元数据已更改
+			.on(RoomEvent.RoomMetadataChanged, onParticipantsChanged)
+			// 跟踪流状态已更改
+			.on(RoomEvent.TrackStreamStateChanged, onParticipantsChanged)
+			// 轨道出版
+			.on(RoomEvent.TrackPublished, onParticipantsChanged)
+			// 收到的数据
+			.on(RoomEvent.DataReceived, DataReceived)
+			// 本地曲目未发布
+			.on(RoomEvent.LocalTrackPublished, onParticipantsChanged)
+			.on(RoomEvent.LocalTrackUnpublished, onParticipantsChanged)
+		// //连接状态发生更改
+		// .on(RoomEvent.ConnectionStateChanged, connectionStateChange)
+
+		// connect to room
+		await room
+			.connect(webrtcWss.value, webrtcToken.value)
+			.then(async () => {
+				console.log('房间', room)
+				ipcRenderer.invoke('screen_share').then((res) => {
+					console.log('分享屏幕', res)
+					// let screenShareArr = res.filter((item) => {
+					// 	return item.id.includes('screen')
+					// })
+					startSharing(res[0].id)
+				})
+			})
+			.catch((error) => {
+				console.warn('error', error)
+			})
+		// 房间的状态
+		// 设置日志
+		setLogExtension((level, msg, context) => {
+			const enhancedContext = {
+				...context,
+				timeStamp: Date.now(),
+			}
+			if (level >= LogLevel.debug) {
+				console.log(level, msg, enhancedContext)
+			}
+		})
+	} catch (e) {
+		console.log(e)
+	}
+}
+const handleTrackSubscribed = async function (track) {
+	onParticipantsChanged()
+}
+/**
+ * 修改中要好好的想一想这个设计
+ */
+const onParticipantsChanged = function () {
+	if (!room) return
+	const remotes = Array.from(room.remoteParticipants.values())
+	const localParticipant = [room.localParticipant]
+	localParticipant.push(...remotes)
+	participants.value = localParticipant
+	// let screenShare = participants.value.filter((item) => {
+	// 	return item.getTrack(Track.Source.ScreenShare)
+	// })
+}
+/**
+ * @description:数据接收
+ * @param {*} payload
+ * @param participant
+ * @param kind
+ */
+const DataReceived = function (payload, participant, kind) {
+	const decoder = new TextDecoder()
+	const strData = decoder.decode(payload)
+	console.log('strData', strData)
+	const messageData = JSON.parse(strData)
+	if (messageData.type == 'mousemove') {
+		ipcRenderer.invoke('mouse-move', messageData.x / messageData.width, messageData.y / messageData.height)
+	} else if (messageData.type == 'click') {
+		ipcRenderer.invoke('mouse-click', messageData.button)
+	} else if (messageData.type == 'keydown') {
+		ipcRenderer.invoke('key-press', messageData.key)
+	}
+}
+const handleDisconnect = function () {
+	console.log('disconnected from room')
+}
+onMounted(async () => {
+	if (!isDevelopment.value) {
+		getToken()
+	}
+})
 </script>
 
 <style lang="scss" scoped>
@@ -94,7 +244,7 @@ const concatOtherComputed = function (): void {
 	box-sizing: border-box;
 	align-items: center;
 	&-content {
-        width:100%;
+		width: 100%;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -113,7 +263,7 @@ const concatOtherComputed = function (): void {
 		}
 	}
 	.container-bottom {
-        // width: 100%;
+		// width: 100%;
 		margin-top: 40px;
 		display: flex;
 		justify-content: space-around;

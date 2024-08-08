@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, systemPreferences } from 'electron';
 import setIpc from './ipcMain'
 import path from 'path'
 let mainWindow: BrowserWindow | null = null
@@ -10,7 +10,7 @@ try {
             width: 900,
             height: 600,
             webPreferences: {
-                preload: path.join(__dirname, 'preload.js'),
+                // preload: path.join(__dirname, 'preload.js'),
                 nodeIntegration: true,
                 contextIsolation: false,
             }
@@ -31,7 +31,35 @@ try {
         event.preventDefault()
         callback(true)
     })
-    app.whenReady().then(() => {
+    async function requestScreenCapturePermission() {
+        if (process.platform === 'darwin') {
+            const screenCapturePermission = systemPreferences.getMediaAccessStatus('screen');
+            console.log('Screen capture permission status:', screenCapturePermission);
+
+            if (screenCapturePermission !== 'granted') {
+                const result = await systemPreferences.askForMediaAccess('screen');
+                console.log('Screen capture permission result:', result);
+
+                if (!result) {
+                    console.log('Screen capture permission denied');
+                }
+
+                return result;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+    app.whenReady().then(async () => {
+        // const hasPermission = await requestScreenCapturePermission();
+
+        // if (!hasPermission) {
+        //     console.error('Screen capture permission is required');
+        //     app.quit();
+        //     return;
+        // }
         createdWindow()
     })
     // 解决9.x跨域异常问题

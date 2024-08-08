@@ -3,6 +3,8 @@ import vue from '@vitejs/plugin-vue'
 import path from 'path'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
+// import commonjs from '@rollup/plugin-commonjs'
+// import { nodeResolve } from '@rollup/plugin-node-resolve'
 // https://vitejs.dev/config/
 
 export default defineConfig({
@@ -24,4 +26,18 @@ export default defineConfig({
             '@': path.resolve(__dirname, './src'),
         },
     },
+    build: {
+        // rollupOptions: {
+        //     plugins: [
+        //         nodeResolve(),
+        //         commonjs({
+        //             dynamicRequireTargets: [
+        //                 'node_modules/@nut-tree/nut-js/**',
+        //                 'node_modules/@nut-tree/libnut/**'
+        //             ],
+        //             ignoreDynamicRequires: false
+        //         })
+        //     ]
+        // }
+    }
 })

@@ -13,6 +13,7 @@ dist-ssr
 *.local
 dist-electron
 .vscode
+output/
 
 # Editor directories and files
 .vscode/*

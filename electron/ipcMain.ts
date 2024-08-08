@@ -1,27 +1,49 @@
-import { ipcMain, desktopCapturer, BrowserWindow, app, screen } from 'electron'
+import { ipcMain, desktopCapturer, BrowserWindow, app } from 'electron'
 import { otherWindowConfig } from './windowsConfig'
+import { AccessToken } from 'livekit-server-sdk'
 const robot = require('robotjs')
-// import robot from 'robotjs'
-// const Offset = 5
-// const yTopOffset = 10
-// function isValidArea(cx: number, cy: number, winx: number, winy: number, width: number, height: number) {
-//     if ((cx < (winx + width - Offset) && cx > winx + Offset) && (cy < (winy + height - Offset) && cy > winy + yTopOffset))
-//         return true
-//     return false
-// }
+import path from 'path'
+const { spawn } = require('child_process')
+import os from 'os'
+// // import ffi from 'ffi-napi'
+// var ffi = require('ffi-napi');// 指定路径注册函数
+// var libm = ffi.Library('../main.dylib',
+//      {'helloP': [ 'string', [ 'string' ,ffi.Function("void",['string','string']),'string'] ]});
+//     //  console.log(libm.helloP("1111",function (a,b){console.log(a,b)},"222"))
+
+const hostname = os.hostname()
 let ChildWin: BrowserWindow | null = null
-
+const returnTzRobotPath = function () {
+    let configFilePath = ''
+    if (process.env.NODE_ENV === 'development') {
+        configFilePath = process.cwd() + '/tzrobot/tzrobot'
+    } else {
+        configFilePath = path.join(process.resourcesPath, 'tzrobot/tzrobot')
+    }
+    return configFilePath
+}
 export default {
-
-
     setDefaultMain() {
         /**
-         *
+         * @description 默认启动tzrobotjs
+         */
+        ipcMain.handle('init-tzrobot', (event) => {
+            const tzrobotProcess = spawn(returnTzRobotPath())
+
+            tzrobotProcess.on('exit', (code) => {
+                console.log(`tzrobotjs进程退出，退出码：${code}`)
+                setTimeout(()=>{
+                    spawn(returnTzRobotPath())
+                },1000)
+            })
+        })
+        /**
+         * @description 屏幕分享
          */
         ipcMain.handle('screen_share', async (event) => {
             return new Promise((resolve, reject) => {
                 desktopCapturer
-                    .getSources({ fetchWindowIcons: true, types: ['window', 'screen'] })
+                    .getSources({ fetchWindowIcons: true, types: ['screen'] })
                     .then((sources) => {
                         let screenListWithPNG = sources.map((item) => ({
                             ...item,
@@ -32,12 +54,11 @@ export default {
                     })
                     .catch((error) => {
                         console.error('获取屏幕和窗口源时出错：', error)
+                        reject(error)
                     })
             })
         })
-        /**
-         * @description 另开浏览器窗口
-         */
+
         ipcMain.handle('open-window', (_event, arg) => {
             console.log('arg', arg)
             let parentID = _event.sender.id
@@ -48,7 +69,6 @@ export default {
                     parent: BrowserWindow.fromId(parentID),
                 }),
             });
-            // 开发模式下自动开启devtools
             if (process.env.NODE_ENV === "development") {
                 ChildWin.webContents.openDevTools({ mode: "undocked", activate: true });
             }
@@ -57,33 +77,50 @@ export default {
             ChildWin.once("ready-to-show", () => {
                 ChildWin.show();
             });
-            // 渲染进程显示时触发
             ChildWin.once("show", () => {
                 ChildWin.webContents.send("send-data-test", arg.sendData);
             })
             app.commandLine.appendArgument('ignore-certificate-errors')
         })
 
-        ipcMain.handle('mouse-move', (event, x, y) => {
-            // console.log(x,y)
-            // console.log('111111', screen.getCursorScreenPoint())
+        ipcMain.handle('mouse-move', async (event, x, y) => {
+            if (!ChildWin) return
             const { width, height } = ChildWin.getContentBounds()
-            // console.log('屏幕', width, height, x, y)
             if (x > width || y > height) {
                 return
             }
-            // robot.moveMouse(x, y);
+            const newX = x * width
+            const newY = y * height
+            robot.moveMouse(newX, newY);
         });
 
         ipcMain.handle('mouse-click', (event, button) => {
             console.log(button)
-            // robot.typeString('Hello world')
             robot.mouseClick(button);
         });
 
         ipcMain.handle('key-press', (event, key) => {
             console.log(key)
-            robot.keyTap(key);
+            robot.keyTap(key)
         });
+
+        ipcMain.handle('create-token-spec', async (event, participantName, roomName, devType) => {
+            try {
+                const at = new AccessToken('dZR7JhW8IS4Nj2wvtTkcpK83b0D3UzTX', 'Z6j9hl7ZWvjuhFowhi1zy7xn11igICdx', {
+                    identity: hostname + new Date().getTime(),
+                    ttl: '7 days',
+                })
+                if (process.env.NODE_ENV === "development") {
+                    at.addGrant({ roomJoin: true, room: '123456', canSubscribe: true, canPublish: true, hidden: true })
+                } else {
+                    at.addGrant({ roomJoin: true, room: '123456', canSubscribe: false, canPublish: true, hidden: false })
+                }
+                let token = await at.toJwt()
+                return token
+            } catch (error) {
+                console.error('Error creating token:', error);
+                throw error;
+            }
+        })
     }
 }
