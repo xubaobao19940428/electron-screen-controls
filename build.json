@@ -37,8 +37,9 @@
 	"mac": {
 		"entitlements": "entitlements.mac.plist",
 		"entitlementsInherit": "entitlements.mac.inherit.plist",
-		"hardenedRuntime": true,
+		"hardenedRuntime": false,
 		"gatekeeperAssess": false,
+        "sign": false,
 		"extendInfo": {
 			"NSAppTransportSecurity": {
 				"NSAllowsArbitraryLoads": true

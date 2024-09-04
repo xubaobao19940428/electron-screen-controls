@@ -23,11 +23,11 @@
 				<div class="container-bottom-left-title">允许控制本机</div>
 				<div class="container-bottom-left-content">
 					<div class="container-bottom-left-content-title">本机识别码</div>
-					<div class="container-bottom-left-content-content">808 643 252</div>
+					<div class="container-bottom-left-content-content">{{ selfIdentificationCode.substring(0, 3) }} {{ selfIdentificationCode.substring(3, 6) }} {{ selfIdentificationCode.substring(6, 9) }}</div>
 				</div>
 				<div class="container-bottom-left-content">
 					<div class="container-bottom-left-content-title">本机验证码（选填）</div>
-					<div class="container-bottom-left-content-content">808 643 252</div>
+					<div class="container-bottom-left-content-content">{{ selfVerificationCode.substring(0, 3) }} {{ selfVerificationCode.substring(3, 6) }} {{ selfVerificationCode.substring(6, 9) }}</div>
 				</div>
 			</div>
 			<div class="container-bottom-right">
@@ -35,34 +35,52 @@
 				<div class="container-bottom-left-content">
 					<div class="container-bottom-left-content-title">伙伴识别码</div>
 					<div class="container-bottom-left-content-content">
-						<el-select v-model="value" filterable allow-create default-first-option :reserve-keyword="false" placeholder="选择想要控制桌面的识别码" style="width: 240px">
+						<el-input v-model="identificationCodeValue" style="width: 240px" placeholder="输入想要控制桌面的识别码" />
+						<!-- <el-select v-model="value" filterable allow-create default-first-option :reserve-keyword="false" placeholder="选择想要控制桌面的识别码" style="width: 240px">
 							<el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value" />
-						</el-select>
+						</el-select> -->
 					</div>
 				</div>
 				<div class="container-bottom-left-content">
 					<div class="container-bottom-left-content-title">验证码（选填）</div>
 					<div class="container-bottom-left-content-content">
-						<el-input v-model="input" style="width: 240px" placeholder="请输入验证码" />
+						<el-input v-model="verificationCodeValue" style="width: 240px" placeholder="请输入验证码" />
 					</div>
 				</div>
 				<div class="container-bottom-left-content" style="margin-top: 80px">
 					<el-button type="primary" style="width: 240px" round size="large" @click="concatOtherComputed">连接</el-button>
+					<!-- <el-button type="primary" style="width: 240px" round size="large" @click="sendMessageToOverlay">测试窗口发送消息</el-button> -->
 				</div>
 			</div>
 		</div>
+		<!-- <canvas ref="fullscreenCanvas"></canvas> -->
 	</div>
 </template>
 
 <script setup lang="ts" name="Home">
 import { ref, onMounted } from 'vue'
 import { ipcRenderer } from 'electron'
+import { ElMessage } from 'element-plus'
 import { LogLevel, Room, RoomEvent, setLogExtension, Track } from 'livekit-client'
-const value = ref<string[]>([])
-const input = ref<string>('')
-const webrtcWss = ref<string>('ws://192.168.0.87:7880')
+import { emitter } from '@/utils/index'
+// const fullscreenCanvas = ref(null)
+function randomString(code, stringth) {
+	let len = code
+	let $chars = stringth
+	let maxLen = $chars.length
+	let pwd = ''
+	for (let i = 0; i < len; i++) {
+		pwd += $chars.charAt(Math.floor(Math.random() * maxLen))
+	}
+	return pwd
+}
+const selfIdentificationCode = ref<string>(randomString(9, '0123456789'))
+const selfVerificationCode = ref<string>(randomString(9, 'abcdefhijkmnprstwxyz123456789'))
+const identificationCodeValue = ref<string[]>('')
+const verificationCodeValue = ref<string>('')
+const webrtcWss = ref<string>('wss://webrtc.tz-yun.com')
 const webrtcToken = ref<string>('')
-let room = null
+let room: Room | null = null
 const participants = ref([])
 const isDevelopment = ref<boolean>(process.env.NODE_ENV === 'development' ? true : false)
 const startSharing = async function (sourceId) {
@@ -83,6 +101,20 @@ const startSharing = async function (sourceId) {
 		source: Track.Source.ScreenShare,
 		stopMicTrackOnMute: true,
 	})
+	setInterval(async () => {
+		const { width, height } = await ipcRenderer.invoke('screen-primary')
+		console.log('获取到的屏幕大小', width, height)
+		const encoder = new TextEncoder()
+		const messageData = JSON.stringify({
+			action: 'ScreenInfo',
+			param: {
+				w: width,
+				h: height,
+			},
+		})
+		const data = encoder.encode(messageData)
+		room.localParticipant.publishData(data)
+	}, 5000)
 }
 const options = [
 	{
@@ -100,19 +132,31 @@ const options = [
 ]
 const concatOtherComputed = function (): void {
 	const winURL = process.env.NODE_ENV === 'development' ? `http://localhost:5173` : `file://${__dirname}/index.html`
+	console.log(identificationCodeValue.value)
+	if (!identificationCodeValue.value) {
+		ElMessage.error('请输入识别码')
+		return
+	}
 	ipcRenderer.invoke('open-window', {
 		winURL: winURL,
-		url: `/screenControls?videoUrl=1111111`,
+		url: `/screenControls?roomName=${identificationCodeValue.value}`,
 		title: '视频观看',
 		resizable: true,
 	})
+}
+function sendMessageToOverlay() {
+	const data = [
+		{ startX: 100, startY: 100, endX: 200, endY: 200 },
+		{ startX: 150, startY: 150, endX: 250, endY: 250 },
+	]
+	ipcRenderer.send('message-from-main-window', data)
 }
 /**
  * @description:获取token
  */
 const getToken = function () {
 	ipcRenderer
-		.invoke('create-token-spec', '111', '222', '3333')
+		.invoke('create-token-spec', selfIdentificationCode.value)
 		.then((token) => {
 			console.log('获取到的token', token)
 			webrtcToken.value = token
@@ -189,7 +233,7 @@ const liveKitRoomInit = async function () {
 		console.log(e)
 	}
 }
-const handleTrackSubscribed = async function (track) {
+const handleTrackSubscribed = async function (track: Track) {
 	onParticipantsChanged()
 }
 /**
@@ -216,13 +260,18 @@ const DataReceived = function (payload, participant, kind) {
 	const strData = decoder.decode(payload)
 	console.log('strData', strData)
 	const messageData = JSON.parse(strData)
-	if (messageData.type == 'mousemove') {
-		ipcRenderer.invoke('mouse-move', messageData.x / messageData.width, messageData.y / messageData.height)
-	} else if (messageData.type == 'click') {
-		ipcRenderer.invoke('mouse-click', messageData.button)
-	} else if (messageData.type == 'keydown') {
-		ipcRenderer.invoke('key-press', messageData.key)
+	if (messageData.action == 'Move') {
+		// emitter.emit('move',messageData.param)
+		ipcRenderer.send('message-from-main-window', {data: messageData.param})
 	}
+
+	// if (messageData.type == 'mousemove') {
+	// 	ipcRenderer.invoke('mouse-move', messageData.x / messageData.width, messageData.y / messageData.height)
+	// } else if (messageData.type == 'click') {
+	// 	ipcRenderer.invoke('mouse-click', messageData.button)
+	// } else if (messageData.type == 'keydown') {
+	// 	ipcRenderer.invoke('key-press', messageData.key)
+	// }
 }
 const handleDisconnect = function () {
 	console.log('disconnected from room')
@@ -230,7 +279,24 @@ const handleDisconnect = function () {
 onMounted(async () => {
 	if (!isDevelopment.value) {
 		getToken()
+		// ipcRenderer.invoke('init-tzrobot')
 	}
+
+	// ipcRenderer.invoke('screen-primary').then((res) => {
+	// 	console.log('获取到的屏幕大小', res)
+	// 	if (fullscreenCanvas.value) {
+	// 		const canvas = fullscreenCanvas.value
+	// 		const context = canvas.getContext('2d')
+	// 		if (context) {
+	// 			canvas.width = res.width
+	// 			canvas.height = res.height
+
+	// 			// 在 Canvas 上绘制内容
+	// 			context.fillStyle = 'rgba(0, 0, 0, 0.5)'
+	// 			context.fillRect(0, 0, canvas.width, canvas.height)
+	// 		}
+	// 	}
+	// })
 })
 </script>
 
@@ -243,6 +309,8 @@ onMounted(async () => {
 	padding: 20px 40px 100px;
 	box-sizing: border-box;
 	align-items: center;
+	position: relative;
+	background-color: #000000;
 	&-content {
 		width: 100%;
 		display: flex;
@@ -302,5 +370,10 @@ onMounted(async () => {
 :deep().el-select__wrapper,
 :deep().el-input__wrapper {
 	background-color: transparent;
+}
+:deep(.el-input__inner) {
+	color: #fff;
+	font-size: 16px;
+	font-weight: bold;
 }
 </style>

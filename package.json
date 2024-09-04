@@ -26,8 +26,8 @@
     "element-plus": "^2.7.8",
     "livekit-client": "^2.4.1",
     "livekit-server-sdk": "^2.6.0",
+    "mitt": "^3.0.1",
     "rebuild": "^0.1.2",
-    "robotjs": "^0.6.0",
     "vue": "^3.4.31",
     "vue-router": "^4.4.2"
   },

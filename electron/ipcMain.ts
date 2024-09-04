@@ -1,7 +1,7 @@
-import { ipcMain, desktopCapturer, BrowserWindow, app } from 'electron'
+import { ipcMain, desktopCapturer, BrowserWindow, app, screen } from 'electron'
 import { otherWindowConfig } from './windowsConfig'
 import { AccessToken } from 'livekit-server-sdk'
-const robot = require('robotjs')
+// const robot = require('robotjs')
 import path from 'path'
 const { spawn } = require('child_process')
 import os from 'os'
@@ -22,7 +22,18 @@ const returnTzRobotPath = function () {
     }
     return configFilePath
 }
+const returnRobotjs = function () {
+    let configFilePath = ''
+    if (process.env.NODE_ENV === 'development') {
+        configFilePath = process.cwd() + '/robotjs/build/Release/robotjs.node'
+    } else {
+        configFilePath = path.join(process.resourcesPath, '/robotjs/build/Release/robotjs.node')
+    }
+    return configFilePath
+}
+// const robot = require(returnRobotjs())
 export default {
+
     setDefaultMain() {
         /**
          * @description 默认启动tzrobotjs
@@ -32,9 +43,12 @@ export default {
 
             tzrobotProcess.on('exit', (code) => {
                 console.log(`tzrobotjs进程退出，退出码：${code}`)
-                setTimeout(()=>{
+                setTimeout(() => {
                     spawn(returnTzRobotPath())
-                },1000)
+                }, 1000)
+            })
+            tzrobotProcess.on('message', (data) => {
+                console.log('执行日志', data)
             })
         })
         /**
@@ -82,6 +96,18 @@ export default {
             })
             app.commandLine.appendArgument('ignore-certificate-errors')
         })
+        /**
+         * 拿到屏幕的分辨率
+         */
+        ipcMain.handle('screen-primary', (event) => {
+            return new Promise((resolve, reject) => {
+                const primaryDisplay = screen.getPrimaryDisplay();
+                const { width, height } = primaryDisplay.workAreaSize;
+                console.log(`屏幕分辨率: ${width}x${height}`);
+                resolve({ width, height })
+            })
+
+        })
 
         ipcMain.handle('mouse-move', async (event, x, y) => {
             if (!ChildWin) return
@@ -91,29 +117,29 @@ export default {
             }
             const newX = x * width
             const newY = y * height
-            robot.moveMouse(newX, newY);
+            // robot.moveMouse(newX, newY);
         });
 
         ipcMain.handle('mouse-click', (event, button) => {
             console.log(button)
-            robot.mouseClick(button);
+            // robot.mouseClick(button);
         });
 
         ipcMain.handle('key-press', (event, key) => {
             console.log(key)
-            robot.keyTap(key)
+            // robot.keyTap(key)
         });
 
-        ipcMain.handle('create-token-spec', async (event, participantName, roomName, devType) => {
+        ipcMain.handle('create-token-spec', async (event,roomName) => {
             try {
-                const at = new AccessToken('dZR7JhW8IS4Nj2wvtTkcpK83b0D3UzTX', 'Z6j9hl7ZWvjuhFowhi1zy7xn11igICdx', {
+                const at = new AccessToken('RTOUC2CbKurOCr6Jr8p73iUahpN2uN2l', 'q3TakZdt5BBk81p7zqDJLIvaHuunEgM4', {
                     identity: hostname + new Date().getTime(),
                     ttl: '7 days',
                 })
                 if (process.env.NODE_ENV === "development") {
-                    at.addGrant({ roomJoin: true, room: '123456', canSubscribe: true, canPublish: true, hidden: true })
+                    at.addGrant({ roomJoin: true, room: roomName, canSubscribe: true, canPublish: true, hidden: true })
                 } else {
-                    at.addGrant({ roomJoin: true, room: '123456', canSubscribe: false, canPublish: true, hidden: false })
+                    at.addGrant({ roomJoin: true, room: roomName, canSubscribe: false, canPublish: true, hidden: false })
                 }
                 let token = await at.toJwt()
                 return token

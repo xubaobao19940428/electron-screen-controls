@@ -14,6 +14,11 @@ const routes: RouteRecordRaw[] = [
         path: '/screenControls',
         name: 'ScreenControls',
         component: () => import('@/views/screenControls/index.vue')
+    },
+    {
+        path: '/overlay',
+        name: 'overlay',
+        component: () => import('@/views/overlay.vue')
     }
 ]
 console.log(routes)

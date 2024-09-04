@@ -6,7 +6,7 @@ import renderer from 'vite-plugin-electron-renderer'
 // import commonjs from '@rollup/plugin-commonjs'
 // import { nodeResolve } from '@rollup/plugin-node-resolve'
 // https://vitejs.dev/config/
-
+console.log(process.versions)
 export default defineConfig({
 
     plugins: [vue(), electron([{
