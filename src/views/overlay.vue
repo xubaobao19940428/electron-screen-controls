@@ -11,7 +11,6 @@ import { ipcRenderer } from 'electron'
 const fullscreenCanvas = ref(null)
 
 onMounted(() => {
-    // console.log('获取到canvas',1111)
 	if (fullscreenCanvas.value) {
 		const canvas = fullscreenCanvas.value
 		const context = canvas.getContext('2d')
@@ -68,6 +67,9 @@ window.addEventListener('resize', () => {
 
 <style lang="scss" scoped>
 .container {
+width: 100%;
+height: 100%;
+overflow: hidden;
 	background-color: rgba(0, 0, 0, 0);
 	.fullscreen-canvas {
 		position: fixed; /* 确保 Canvas 始终覆盖整个屏幕 */

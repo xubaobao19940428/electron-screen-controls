@@ -1,20 +1,58 @@
-import { app, BrowserWindow, systemPreferences, screen, ipcMain } from 'electron';
+import { app, BrowserWindow, systemPreferences, screen, ipcMain, Tray, Menu } from 'electron';
 import setIpc from './ipcMain'
 import path from 'path'
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
+let appTray: Tray | null = null;
+const returnTrayIcontPath = function () {
+    let configFilePath = ''
+    if (process.env.NODE_ENV === 'development') {
+        configFilePath = process.cwd() + '/trayIcon/icon_32x32.png'
+    } else {
+        configFilePath = path.join(process.resourcesPath, 'trayIcon/icon_32x32.png')
+    }
+    return configFilePath
+}
+const iconPath = returnTrayIcontPath()
+
+/**
+ * 创建系统托盘
+ */
+function createAppTray() {
+    //系统托盘
+    appTray = new Tray(iconPath);
+    const contextMenu = Menu.buildFromTemplate([
+        { label: '开发者模式', type: 'radio', role: 'toggleDevTools' },
+        { label: '关闭', type: 'radio', role: 'close' },
+        
+    ])
+    appTray.setContextMenu(contextMenu)
+    //系统托盘的提示文本
+    appTray.setToolTip('太振科技');
+    //点击系统托盘打开窗口
+    appTray.on('click', () => {
+        mainWindow?.show()
+    });
+}
 try {
     setIpc.setDefaultMain()
     const createdWindow = () => {
+        const { width, height } = screen.getPrimaryDisplay().workAreaSize
         mainWindow = new BrowserWindow({
-            width: 900,
-            height: 600,
-
+            x: 0,
+            y: 0,
+            width: width,
+            height: height,
+            // fullscreen: true,
+            frame: false,
+            transparent: true, // 透明主窗口
+            alwaysOnTop: true, // 主窗口始终在最上层
+            skipTaskbar: true, // 主窗口不出现在任务栏中
             // transparent: true,
             webPreferences: {
-                // preload: path.join(__dirname, 'preload.js'),
                 nodeIntegration: true,
                 contextIsolation: false,
+                backgroundThrottling: false,
             }
         })
 
@@ -23,13 +61,19 @@ try {
         } else {
             mainWindow.loadFile(path.resolve(__dirname, '../dist/index.html'));
         }
+        mainWindow.setIgnoreMouseEvents(true)
+        // 拦截窗口关闭事件，隐藏窗口而不是退出应用
+        // mainWindow.on('close', (event) => {
+        //     event.preventDefault() // 阻止窗口默认关闭行为
+        //     mainWindow.hide() // 隐藏窗口
+        // })
         // 监听消息并转发到 overlayWindow
-        ipcMain.on('message-from-main-window', (event, data) => {
-            if (overlayWindow) {
-                console.log('mainwinodw发送的消息', data)
-                overlayWindow.webContents.send('message-to-overlay', data);
-            }
-        });
+        // ipcMain.on('message-from-main-window', (event, data) => {
+        //     if (overlayWindow) {
+        //         console.log('mainwinodw发送的消息', data)
+        //         overlayWindow.webContents.send('message-to-overlay', data);
+        //     }
+        // });
     }
 
     function createOverlayWindow() {
@@ -104,8 +148,10 @@ try {
         //     app.quit();
         //     return;
         // }
+        //创建系统托盘
+        createAppTray()
         createdWindow()
-        createOverlayWindow()
+        // createOverlayWindow()
     })
     // 解决9.x跨域异常问题
     app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors')

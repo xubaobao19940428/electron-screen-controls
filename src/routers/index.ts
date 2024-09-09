@@ -8,8 +8,13 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/home',
         name: 'Home',
-        component: () => import('@/views/dashboard/index.vue')
+        component: () => import('@/views/dashboard/home.vue')
     },
+    // {
+    //     path: '/home',
+    //     name: 'Home',
+    //     component: () => import('@/views/dashboard/index.vue')
+    // },
     {
         path: '/screenControls',
         name: 'ScreenControls',

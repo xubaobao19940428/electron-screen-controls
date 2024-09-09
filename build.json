@@ -16,6 +16,10 @@
 		{
 			"from": "tzrobot/",
 			"to": "tzrobot/"
+		},
+        {
+			"from": "trayIcon/",
+			"to": "trayIcon/"
 		}
 	],
 	"files": ["dist-electron", "dist"],

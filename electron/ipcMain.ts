@@ -130,18 +130,20 @@ export default {
             // robot.keyTap(key)
         });
 
-        ipcMain.handle('create-token-spec', async (event,roomName) => {
+        ipcMain.handle('create-token-spec', async (event, roomName) => {
             try {
                 const at = new AccessToken('RTOUC2CbKurOCr6Jr8p73iUahpN2uN2l', 'q3TakZdt5BBk81p7zqDJLIvaHuunEgM4', {
                     identity: hostname + new Date().getTime(),
                     ttl: '7 days',
                 })
-                if (process.env.NODE_ENV === "development") {
-                    at.addGrant({ roomJoin: true, room: roomName, canSubscribe: true, canPublish: true, hidden: true })
-                } else {
-                    at.addGrant({ roomJoin: true, room: roomName, canSubscribe: false, canPublish: true, hidden: false })
-                }
+                // if (process.env.NODE_ENV === "development") {
+                //     at.addGrant({ roomJoin: true, room: roomName, canSubscribe: true, canPublish: true, hidden: false })
+                // }
+                // else {
+                    at.addGrant({ roomJoin: true, room: roomName, canSubscribe: true, canPublish: true, hidden: false })
+                // }
                 let token = await at.toJwt()
+                console.log(token)
                 return token
             } catch (error) {
                 console.error('Error creating token:', error);
