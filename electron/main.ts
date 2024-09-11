@@ -22,10 +22,22 @@ function createAppTray() {
     //系统托盘
     appTray = new Tray(iconPath);
     const contextMenu = Menu.buildFromTemplate([
-        { label: '开发者模式', type: 'radio', role: 'toggleDevTools' },
-        { label: '关闭', type: 'radio', role: 'close' },
-        
-    ])
+        {
+            label: '开发者模式',
+            type: 'radio',
+            click: () => {
+                mainWindow?.webContents.openDevTools();
+            }
+        },
+        {
+            label: '关闭',
+            type: 'radio',
+            click: () => {
+                mainWindow?.close(); // 关闭窗口
+                app.quit(); // 完全退出应用
+            }
+        }
+    ]);
     appTray.setContextMenu(contextMenu)
     //系统托盘的提示文本
     appTray.setToolTip('太振科技');
@@ -37,31 +49,41 @@ function createAppTray() {
 try {
     setIpc.setDefaultMain()
     const createdWindow = () => {
-        const { width, height } = screen.getPrimaryDisplay().workAreaSize
+        // const { width, height} = screen.getPrimaryDisplay().workAreaSize
+        // const { x, y } = screen.getPrimaryDisplay().bounds;
+        // 确保 screen 模块可用，并获取显示器信息
+        const primaryDisplay = screen.getPrimaryDisplay();
+
+        if (!primaryDisplay || !primaryDisplay.bounds) {
+            console.error('Error: Unable to get primary display bounds');
+            return;
+        }
+
+        const { width, height } = primaryDisplay.workAreaSize;
         mainWindow = new BrowserWindow({
             x: 0,
             y: 0,
             width: width,
             height: height,
-            // fullscreen: true,
             frame: false,
             transparent: true, // 透明主窗口
             alwaysOnTop: true, // 主窗口始终在最上层
             skipTaskbar: true, // 主窗口不出现在任务栏中
-            // transparent: true,
+            // fullscreenable: true, // 允许全屏
             webPreferences: {
                 nodeIntegration: true,
                 contextIsolation: false,
                 backgroundThrottling: false,
             }
         })
-
         if (process.env.VITE_DEV_SERVER_URL) {
             mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
         } else {
             mainWindow.loadFile(path.resolve(__dirname, '../dist/index.html'));
         }
         mainWindow.setIgnoreMouseEvents(true)
+        // getTaskbarHeight()
+        // getStatusBarHeight()
         // 拦截窗口关闭事件，隐藏窗口而不是退出应用
         // mainWindow.on('close', (event) => {
         //     event.preventDefault() // 阻止窗口默认关闭行为

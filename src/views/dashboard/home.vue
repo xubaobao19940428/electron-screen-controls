@@ -1,9 +1,3 @@
-<!--
- * index.vue
- * @author: AUTHOR
- * @description: DESCRIPTION
- * @since: 2024-08-05
--->
 <template>
     <div class="container">
         <canvas ref="fullscreenCanvas" class="fullscreen-canvas"></canvas>
@@ -11,224 +5,261 @@
 </template>
 
 <script setup lang="ts" name="Home">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeMount } from 'vue'
 import { ipcRenderer } from 'electron'
 import { LogLevel, Room, RoomEvent, setLogExtension, Track } from 'livekit-client'
-const webrtcWss = ref<string>('wss://webrtc.tz-yun.com')
-const webrtcToken = ref<string>('')
+
+// 变量声明
+const webrtcWss = ref('ws://192.168.0.140:7880')
+const webrtcToken = ref('')
 const devicePixelRatio = window.devicePixelRatio || 1
+const canvasCache = ref([]) // 缓存绘制数据
+const encoder = new TextEncoder()
+const isDrawing = ref(false) // 控制绘图状态
+let cleanCanvasTimer = null // 用于清除画布的定时器
+let connectTimer = null // 重连定时器
+let room = null // WebRTC 房间对象
+let reconnectTimer: number | null | undefined = null
+const participants = ref([]) // 存储参与者列表
+const fullscreenCanvas = ref(null) // 画布引用
 
-const canvasCache = ref([])
+const isDrawingPath = ref([])
 
-const isDrawing = ref(false)
-let cleanCanvasTimer: number | null | undefined = null //重新绘制画布定时器
-
-
-let room: Room | null = null
-
-const participants = ref([])
-
-const fullscreenCanvas = ref(null)
-const startSharing = async function (sourceId: any) {
+// 开始共享屏幕
+const startSharing = async (sourceId) => {
     const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: {
-            mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: sourceId,
-            },
-        },
+        video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
     })
-    console.log('stream', stream)
     const screenTrack = stream.getVideoTracks()[0]
-    console.log('screenTrack', screenTrack)
     room.localParticipant.publishTrack(screenTrack, {
         name: '屏幕分享',
         source: Track.Source.ScreenShare,
         stopMicTrackOnMute: true,
     })
+    ipcRenderer.invoke('screen-primary-tabbar').then(data => {
+        const { tabBarCoefficient } = data
+        const messageData = JSON.stringify({
+            type: 'tabBarCoefficient',
+            data: tabBarCoefficient,
+        })
+        const sendData = encoder.encode(messageData)
+        room.localParticipant.publishData(sendData)
+
+    })
+
 }
 
-/**
- * @description:获取token
- */
-const getToken = function () {
+// 获取 WebRTC 连接 Token 并初始化
+const getToken = () => {
     // ipcRenderer
-    //     .invoke('create-token-spec', '123456')
-    //     .then((token) => {
-    //         console.log('获取到的token', token)
-            // webrtcToken.value = token
-            // liveKitRoomInit()
-        // })
-        // .catch((error) => {
-        //     console.log('error', error)
-        // })
-    webrtcToken.value = 'eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6IjEyMzQ1NiIsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaCI6dHJ1ZSwiaGlkZGVuIjpmYWxzZX0sImlzcyI6IlJUT1VDMkNiS3VyT0NyNkpyOHA3M2lVYWhwTjJ1TjJsIiwiZXhwIjoxNzI2NDc3NTY5LCJuYmYiOjAsInN1YiI6InFpYW5jaGVuZ2RlTWFjQm9vay1Qcm8tMy5sb2NhbDE3MjU4NzI3Njk4ODQifQ.GwGAP_GDx-m-iemZULlhcjDTi5Yr6IUIbJ21XB98s0E'
+    // 	.invoke('create-token-spec', '123456')
+    // 	.then((token) => {
+    // 		console.log('获取到的token', token)
+    // 		webrtcToken.value = token
+    // 		liveKitRoomInit()
+    // 	})
+    // 	.catch((error) => {
+    // 		console.log('error', error)
+    // 	})
+    webrtcToken.value = 'eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6IjEyMzQ1NiIsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaCI6dHJ1ZSwiaGlkZGVuIjpmYWxzZX0sImlzcyI6ImRaUjdKaFc4SVM0Tmoyd3Z0VGtjcEs4M2IwRDNVelRYIiwiZXhwIjoxNzI2NjMxNTY0LCJuYmYiOjAsInN1YiI6InFpYW5jaGVuZ2RlTWFjQm9vay1Qcm8tMy5sb2NhbDE3MjYwMjY3NjQxNTQifQ.V7hA49Le577Uc4EHBu2SdrSz5CuvaRLedPUWzWp9MUY' // 使用实际获取的 Token
     liveKitRoomInit()
     initCanvas()
 }
-const liveKitRoomInit = async function () {
+
+// 初始化 LiveKit 房间连接
+const liveKitRoomInit = async () => {
     try {
-        // 初始化房间
-        room = new Room({
-            // automatically manage subscribed video quality
-            adaptiveStream: false,
-            // optimize publishing bandwidth and CPU for published tracks
-            dynacast: false,
-            publishDefaults: {
-                videoCodec: 'h264',
-            },
-        })
-        // 轨道订阅
-        room.on(RoomEvent.TrackSubscribed, await handleTrackSubscribed)
-            // 取消订阅
-            .on(RoomEvent.TrackUnsubscribed, await handleTrackSubscribed)
+        room = new Room({ adaptiveStream: false, dynacast: false, publishDefaults: { videoCodec: 'h264' } })
+
+        // 订阅事件
+        room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed)
+            .on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed)
             .on(RoomEvent.ParticipantConnected, onParticipantsChanged)
             .on(RoomEvent.ParticipantDisconnected, onParticipantsChanged)
-            //连接质量修改
             .on(RoomEvent.ConnectionQualityChanged, onParticipantsChanged)
-            // // 断开的
             .on(RoomEvent.Disconnected, handleDisconnect)
-            // 房间元数据已更改
-            .on(RoomEvent.RoomMetadataChanged, onParticipantsChanged)
-            // 跟踪流状态已更改
-            .on(RoomEvent.TrackStreamStateChanged, onParticipantsChanged)
-            // 轨道出版
-            .on(RoomEvent.TrackPublished, onParticipantsChanged)
-            // 收到的数据
-            .on(RoomEvent.DataReceived, DataReceived)
-            // 本地曲目未发布
-            .on(RoomEvent.LocalTrackPublished, onParticipantsChanged)
-            .on(RoomEvent.LocalTrackUnpublished, onParticipantsChanged)
-        await room
-            .connect(webrtcWss.value, webrtcToken.value)
-            .then(async () => {
-                console.log('房间', room)
-                ipcRenderer.invoke('screen_share').then((res) => {
-                    console.log('分享屏幕', res)
-                    startSharing(res[0].id)
-                })
-            })
-            .catch((error) => {
-                console.warn('error', error)
-            })
-        // 房间的状态
-        // 设置日志
+            .on(RoomEvent.DataReceived, handleDataReceived)
+
+        await room.connect(webrtcWss.value, webrtcToken.value)
+
+        // 开始屏幕共享
+        const screenId = await ipcRenderer.invoke('screen_share')
+        startSharing(screenId[0].id)
+
+        // 设置日志扩展
         setLogExtension((level, msg, context) => {
-            const enhancedContext = {
-                ...context,
-                timeStamp: Date.now(),
-            }
+            const enhancedContext = { ...context, timeStamp: Date.now() }
             if (level >= LogLevel.debug) {
                 console.log(level, msg, enhancedContext)
             }
         })
     } catch (e) {
-        console.log(e)
+        console.error('连接房间失败:', e)
     }
+    //记录重新连接
+    let reconnectIndex = 0
+    reconnectTimer = window.setInterval(async () => {
+        if (room && room.state === 'disconnected') {
+            ++reconnectIndex
+        }
+        if (reconnectIndex == 2) {
+            console.log('正在连接中')
+            await room.connect(webrtcWss.value, webrtcToken).finally(() => {
+                reconnectIndex = 0
+            })
+            // 开始屏幕共享
+            const screenId = await ipcRenderer.invoke('screen_share')
+            startSharing(screenId[0].id)
+        }
+    }, 5000)
 }
-const handleTrackSubscribed = async function (track: Track) {
+
+// 处理订阅轨道
+const handleTrackSubscribed = (track) => {
+    console.log('订阅轨道:')
     onParticipantsChanged()
 }
-/**
- * 修改中要好好的想一想这个设计
- */
-const onParticipantsChanged = function () {
-    if (!room) return
-    const remotes = Array.from(room.remoteParticipants.values())
-    const localParticipant = [room.localParticipant]
-    localParticipant.push(...remotes)
-    participants.value = localParticipant
+
+// 处理取消订阅轨道
+const handleTrackUnsubscribed = () => {
+    console.log('取消订阅轨道')
+    onParticipantsChanged()
 }
-/**
- * @description:数据接收
- * @param {*} payload
- * @param participant
- * @param kind
- */
-const DataReceived = function (payload: AllowSharedBufferSource | undefined, participant: any, kind: any) {
+
+// 更新参与者状态
+const onParticipantsChanged = () => {
+    if (!room) return
+    ipcRenderer.invoke('screen-primary-tabbar').then(data => {
+        const { tabBarCoefficient } = data
+        const messageData = JSON.stringify({
+            type: 'tabBarCoefficient',
+            data: tabBarCoefficient,
+        })
+        const sendData = encoder.encode(messageData)
+        room.localParticipant.publishData(sendData)
+
+    })
+    const remotes = Array.from(room.remoteParticipants.values())
+    participants.value = [room.localParticipant, ...remotes]
+}
+
+// 接收绘制数据
+const handleDataReceived = (payload, participant, kind) => {
     const decoder = new TextDecoder()
     const strData = decoder.decode(payload)
-    // console.log('strData', strData)
     const messageData = JSON.parse(strData)
     const data = messageData.param
-    // 重新获取 canvas 和 context，确保绘制环境正确
+    // console.log('接收到的数据', data, devicePixelRatio)
     const canvas = fullscreenCanvas.value
     const context = canvas ? canvas.getContext('2d') : null
-    if (messageData.action == 'Move') {
+
+    if (messageData.action === 'Move' && context) {
         isDrawing.value = true
-        if (cleanCanvasTimer) {
-            window.clearInterval(cleanCanvasTimer)
-        }
-        try {
+        cancelCleanCanvasTimer()
 
-            if (context && data) {
-                // console.log('Received data from mainWindow:', data)
-                // 遍历数据并绘制到画布上
-                data.forEach((item) => {
-                    context.strokeStyle = 'red'
-                    context.lineJoin = 'round'
-                    context.lineCap = 'round'
-                    context.lineWidth = 2
-                    context.beginPath()
-                    context.moveTo((item.startX / item.videoWidth * canvas.width / devicePixelRatio).toFixed(13), (item.startY / item.videoHeight * canvas.height / devicePixelRatio).toFixed(13))
-                    context.lineTo((item.endX / item.videoWidth * canvas.width / devicePixelRatio).toFixed(13), (item.endY / item.videoHeight * canvas.height / devicePixelRatio).toFixed(13))
-                    context.stroke()
-                })
-            }
-        } catch (error) {
-            console.error('Error during message processing:', error)
-        }
-    } else if (messageData.action == 'End') {
-        isDrawing.value = false;
-        // 重新获取 canvas 和 context，确保绘制环境正确
-        canvasCache.value.push(JSON.parse(JSON.stringify(data)))
-       
-        cleanCanvasTimer = window.setInterval(() => {
-            if (!isDrawing.value) {
-                console.log('结束', canvasCache.value)
-                context.clearRect(0, 0, canvas.width, canvas.height);
-                canvasCache.value.shift()
-                canvasCache.value.map((item: any) => {
-                    item.map((path: { startX: any; startY: any; endX: any; endY: any; videoWidth: any, videoHeight: any }) => {
-                        context.strokeStyle = 'red'
-                        context.lineJoin = 'round'
-                        context.lineCap = 'round'
-                        context.lineWidth = 2
-                        context.beginPath();
-                        context.moveTo((path.startX / path.videoWidth * canvas.width / devicePixelRatio).toFixed(13), (path.startY / path.videoHeight * canvas.heigh / devicePixelRatio).toFixed(13))
-                        context.lineTo((path.endX / path.videoWidth * canvas.width / devicePixelRatio).toFixed(13), (path.endY / path.videoHeight * canvas.height / devicePixelRatio).toFixed(13))
-                        context.stroke();
-                    })
-                })
-            }
-        }, 5000)
+        // 遍历绘制数据
+        data.forEach((item) => {
+            drawPath(context, item, canvas)
+            isDrawingPath.value.push(item)
+        })
+    } else if (messageData.action === 'End') {
+        isDrawing.value = false
+        console.log('结束数据', data)
+        canvasCache.value.push(JSON.parse(JSON.stringify(isDrawingPath.value)))
+        isDrawingPath.value = []
+
+        scheduleCleanCanvas(context, canvas)
     }
 }
-const handleDisconnect = function () {
-    console.log('disconnected from room')
+// 绘制路径
+const drawPath = (context, item, canvas) => {
+
+    const scaleX = canvas.width / item.videoWidth / devicePixelRatio;
+    const scaleY = canvas.height / item.videoHeight / devicePixelRatio;;
+    const startX = item.startX * scaleX;
+    const startY = item.startY * scaleY;
+    const endX = item.endX * scaleX;
+    const endY = item.endY * scaleY;
+    context.strokeStyle = 'red'
+    context.lineJoin = 'round'
+    context.lineCap = 'round'
+    context.lineWidth = 2
+    context.beginPath();
+    context.moveTo(startX, startY);
+    context.lineTo(endX, endY);
+    context.stroke();
 }
 
-const initCanvas = function () {
-    if (fullscreenCanvas.value) {
-        const canvas = fullscreenCanvas.value;
-        const context = canvas.getContext('2d');
+// 定时按顺序清除画布
+const scheduleCleanCanvas = (context, canvas) => {
+    cancelCleanCanvasTimer()
+    console.time();
+    cleanCanvasTimer = setTimeout(() => {
+        if (!isDrawing.value && canvasCache.value.length > 0) {
+            // const oldPaths = canvasCache.value.shift() // 取出最早的一段绘制路径
+            canvasCache.value = []
+            context.clearRect(0, 0, canvas.width, canvas.height) // 清空画布
+
+            // // 重新绘制剩余路径
+            // canvasCache.value.forEach((pathGroup) => {
+            //     pathGroup.forEach((path) => drawPath(context, path, canvas))
+            // })
+            console.timeEnd();
+            // 递归调用，继续清除下一个
+            // scheduleCleanCanvas(context, canvas)
+        }
+    }, 5000)
+}
+
+// 取消清理画布的定时器
+const cancelCleanCanvasTimer = () => {
+    if (cleanCanvasTimer) {
+        clearTimeout(cleanCanvasTimer)
+        cleanCanvasTimer = null
+    }
+}
+
+// 处理断开连接
+const handleDisconnect = (reason) => {
+    console.log('reason', reason)
+    // if (reason !== 1) {
+    //     participants.value = []
+    //     connectTimer = window.setTimeout(() => {
+    //         room.connect(webrtcWss.value, webrtcToken.value).then(async () => {
+    //             const screenId = await ipcRenderer.invoke('screen_share')
+    //             startSharing(screenId[0].id)
+    //         }).catch((error) => {
+    //             console.warn(error)
+    //             // 开始屏幕共享
+
+    //         })
+    //     }, 5000)
+    // }
+}
+
+// 初始化 Canvas
+const initCanvas = () => {
+    const canvas = fullscreenCanvas.value
+    if (canvas) {
+        const context = canvas.getContext('2d')
         if (context) {
-            // 提升画布分辨率
-            const ratio = window.devicePixelRatio || 1;
-            canvas.width = window.innerWidth * ratio;
-            canvas.height = window.innerHeight * ratio;
-            context.scale(ratio, ratio);  // 按比例缩放
-            console.log('Canvas initialized with width:', canvas.width, 'and height:', canvas.height);
-
-            // 清除画布，确保背景透明
-            context.clearRect(0, 0, canvas.width, canvas.height);
+            const ratio = devicePixelRatio || 1
+            canvas.width = window.innerWidth * ratio
+            canvas.height = window.innerHeight * ratio
+            context.scale(ratio, ratio)
+            context.clearRect(0, 0, canvas.width, canvas.height)
         }
     }
-};
-onMounted(async () => {
-    getToken()
+}
+onBeforeMount(() => {
+    if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer)
+        reconnectTimer = null
+    }
 })
+
+onMounted(() => getToken())
 </script>
 
 <style lang="scss" scoped>
@@ -240,18 +271,13 @@ onMounted(async () => {
 
     .fullscreen-canvas {
         position: fixed;
-        /* 确保 Canvas 始终覆盖整个屏幕 */
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
         z-index: 1000;
-        /* 确保 Canvas 在最上层 */
         pointer-events: none;
-        /* 使 Canvas 不影响下面的操作 */
         background-color: transparent;
-        /* 确保 Canvas 背景透明 */
-        // border: 1px solid red;
     }
 }
 </style>

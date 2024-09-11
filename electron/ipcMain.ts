@@ -132,7 +132,7 @@ export default {
 
         ipcMain.handle('create-token-spec', async (event, roomName) => {
             try {
-                const at = new AccessToken('RTOUC2CbKurOCr6Jr8p73iUahpN2uN2l', 'q3TakZdt5BBk81p7zqDJLIvaHuunEgM4', {
+                const at = new AccessToken('dZR7JhW8IS4Nj2wvtTkcpK83b0D3UzTX', 'Z6j9hl7ZWvjuhFowhi1zy7xn11igICdx', {
                     identity: hostname + new Date().getTime(),
                     ttl: '7 days',
                 })
@@ -140,7 +140,7 @@ export default {
                 //     at.addGrant({ roomJoin: true, room: roomName, canSubscribe: true, canPublish: true, hidden: false })
                 // }
                 // else {
-                    at.addGrant({ roomJoin: true, room: roomName, canSubscribe: true, canPublish: true, hidden: false })
+                at.addGrant({ roomJoin: true, room: roomName, canSubscribe: true, canPublish: true, hidden: false })
                 // }
                 let token = await at.toJwt()
                 console.log(token)
@@ -149,6 +149,21 @@ export default {
                 console.error('Error creating token:', error);
                 throw error;
             }
+        })
+        /**
+         * 拿到屏幕的分辨率
+         */
+        ipcMain.handle('screen-primary-tabbar', (event) => {
+            return new Promise((resolve, reject) => {
+                const primaryDisplay = screen.getPrimaryDisplay();
+                const fullHeight = primaryDisplay.bounds.height;
+                const workAreaHeight = primaryDisplay.workArea.height;
+                const tabBarHeight = fullHeight - workAreaHeight;
+                console.log('状态栏高度', tabBarHeight)
+                // return tabBarHeight;
+                resolve({ tabBarCoefficient: tabBarHeight / fullHeight })
+            })
+
         })
     }
 }

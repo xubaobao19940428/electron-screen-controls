@@ -7,7 +7,7 @@
 			"url": "http://127.0.0.1"
 		}
 	],
-	"productName": "太振科技远程桌面控制系统",
+	"productName": "太振科技同屏绘画",
 	"appId": "org.Sky.electron-screen-controls",
 	"directories": {
 		"output": "output"
