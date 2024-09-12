@@ -70,11 +70,15 @@ const getToken = () => {
 // 初始化 LiveKit 房间连接
 const liveKitRoomInit = async () => {
     try {
-        room = new Room({ adaptiveStream: false, dynacast: false, publishDefaults: { videoCodec: 'h264' } })
+        room = new Room({ adaptiveStream: false, dynacast: false, publishDefaults: { videoCodec: 'h264' },disconnectOnPageLeave:true })
 
         // 订阅事件
-        room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed)
-            .on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed)
+        room.on(RoomEvent.TrackSubscribed,await  handleTrackSubscribed)
+            .on(RoomEvent.TrackUnsubscribed, await handleTrackUnsubscribed)
+            // 房间元数据已更改
+            .on(RoomEvent.RoomMetadataChanged, onParticipantsChanged)
+            // 跟踪流状态已更改
+            .on(RoomEvent.TrackStreamStateChanged, onParticipantsChanged)
             .on(RoomEvent.ParticipantConnected, onParticipantsChanged)
             .on(RoomEvent.ParticipantDisconnected, onParticipantsChanged)
             .on(RoomEvent.ConnectionQualityChanged, onParticipantsChanged)
