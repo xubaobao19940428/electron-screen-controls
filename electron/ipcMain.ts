@@ -5,6 +5,8 @@ import { AccessToken } from 'livekit-server-sdk'
 import path from 'path'
 const { spawn } = require('child_process')
 import os from 'os'
+import axios from 'axios'
+import {md5} from 'js-md5'
 // // import ffi from 'ffi-napi'
 // var ffi = require('ffi-napi');// 指定路径注册函数
 // var libm = ffi.Library('../main.dylib',
@@ -165,5 +167,22 @@ export default {
             })
 
         })
+        ipcMain.handle('fetch-data', async (event, url) => {
+            try {
+                let Time = new Date().getTime()
+                const response = await axios.post(url, {
+                },
+                {
+                    headers: {
+                        'x-safe-time': Time,
+                        'x-safe-token': md5(Time + '31bb19f84c6789827588e68a2e940b0d'),
+                    }
+                });
+                return response.data.data;
+            } catch (error) {
+                console.log('error',error)
+                return { error: error.message };
+            }
+        });
     }
 }

@@ -8,7 +8,6 @@
 import { ref, onMounted, onBeforeMount } from 'vue'
 import { ipcRenderer } from 'electron'
 import { LogLevel, Room, RoomEvent, setLogExtension, Track } from 'livekit-client'
-
 // 变量声明
 const webrtcWss = ref('ws://192.168.0.140:7880')
 const webrtcToken = ref('')
@@ -24,6 +23,16 @@ const participants = ref([]) // 存储参与者列表
 const fullscreenCanvas = ref(null) // 画布引用
 
 const isDrawingPath = ref([])
+
+
+const getGraffitiToken = async () => {
+    let data = await ipcRenderer.invoke('fetch-data', 'http://192.168.0.117:30000/trailv2/api/iot/paint/token')
+    webrtcWss.value = data.wss
+    webrtcToken.value = data.token
+    liveKitRoomInit()
+    initCanvas()
+}
+
 
 // 开始共享屏幕
 const startSharing = async (sourceId) => {
@@ -51,29 +60,20 @@ const startSharing = async (sourceId) => {
 }
 
 // 获取 WebRTC 连接 Token 并初始化
-const getToken = () => {
-    // ipcRenderer
-    // 	.invoke('create-token-spec', '123456')
-    // 	.then((token) => {
-    // 		console.log('获取到的token', token)
-    // 		webrtcToken.value = token
-    // 		liveKitRoomInit()
-    // 	})
-    // 	.catch((error) => {
-    // 		console.log('error', error)
-    // 	})
-    webrtcToken.value = 'eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6IjEyMzQ1NiIsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaCI6dHJ1ZSwiaGlkZGVuIjpmYWxzZX0sImlzcyI6ImRaUjdKaFc4SVM0Tmoyd3Z0VGtjcEs4M2IwRDNVelRYIiwiZXhwIjoxNzI2NjMxNTY0LCJuYmYiOjAsInN1YiI6InFpYW5jaGVuZ2RlTWFjQm9vay1Qcm8tMy5sb2NhbDE3MjYwMjY3NjQxNTQifQ.V7hA49Le577Uc4EHBu2SdrSz5CuvaRLedPUWzWp9MUY' // 使用实际获取的 Token
-    liveKitRoomInit()
-    initCanvas()
-}
+// const getToken = () => {
+
+//     webrtcToken.value = 'eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6IjEyMzQ1NiIsImNhblN1YnNjcmliZSI6dHJ1ZSwiY2FuUHVibGlzaCI6dHJ1ZSwiaGlkZGVuIjpmYWxzZX0sImlzcyI6ImRaUjdKaFc4SVM0Tmoyd3Z0VGtjcEs4M2IwRDNVelRYIiwiZXhwIjoxNzI2NjMxNTY0LCJuYmYiOjAsInN1YiI6InFpYW5jaGVuZ2RlTWFjQm9vay1Qcm8tMy5sb2NhbDE3MjYwMjY3NjQxNTQifQ.V7hA49Le577Uc4EHBu2SdrSz5CuvaRLedPUWzWp9MUY' // 使用实际获取的 Token
+//     liveKitRoomInit()
+//     initCanvas()
+// }
 
 // 初始化 LiveKit 房间连接
 const liveKitRoomInit = async () => {
     try {
-        room = new Room({ adaptiveStream: false, dynacast: false, publishDefaults: { videoCodec: 'h264' },disconnectOnPageLeave:true })
+        room = new Room({ adaptiveStream: false, dynacast: false, publishDefaults: { videoCodec: 'h264' }, disconnectOnPageLeave: true })
 
         // 订阅事件
-        room.on(RoomEvent.TrackSubscribed,await  handleTrackSubscribed)
+        room.on(RoomEvent.TrackSubscribed, await handleTrackSubscribed)
             .on(RoomEvent.TrackUnsubscribed, await handleTrackUnsubscribed)
             // 房间元数据已更改
             .on(RoomEvent.RoomMetadataChanged, onParticipantsChanged)
@@ -263,7 +263,10 @@ onBeforeMount(() => {
     }
 })
 
-onMounted(() => getToken())
+onMounted(async () => {
+    await getGraffitiToken()
+    console.log()
+})
 </script>
 
 <style lang="scss" scoped>
