@@ -7,7 +7,7 @@
 			"url": "http://127.0.0.1"
 		}
 	],
-	"productName": "太振科技同屏绘画",
+	"productName": "太振科技庭审同屏绘制",
 	"appId": "org.Sky.electron-screen-controls",
 	"directories": {
 		"output": "output"

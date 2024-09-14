@@ -7,6 +7,11 @@ const { spawn } = require('child_process')
 import os from 'os'
 import axios from 'axios'
 import {md5} from 'js-md5'
+// 忽略 SSL 证书验证
+const https = require('https');
+const agent = new https.Agent({  
+  rejectUnauthorized: false
+});
 // // import ffi from 'ffi-napi'
 // var ffi = require('ffi-napi');// 指定路径注册函数
 // var libm = ffi.Library('../main.dylib',
@@ -176,11 +181,11 @@ export default {
                     headers: {
                         'x-safe-time': Time,
                         'x-safe-token': md5(Time + '31bb19f84c6789827588e68a2e940b0d'),
-                    }
+                    },
+                    httpsAgent: agent // 使用自定义的 https agent 忽略证书验证
                 });
                 return response.data.data;
             } catch (error) {
-                console.log('error',error)
                 return { error: error.message };
             }
         });

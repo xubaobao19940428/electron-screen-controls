@@ -26,13 +26,13 @@ const isDrawingPath = ref([])
 
 
 const getGraffitiToken = async () => {
-    let data = await ipcRenderer.invoke('fetch-data', 'http://192.168.0.117:30000/trailv2/api/iot/paint/token')
+    let data = await ipcRenderer.invoke('fetch-data', 'https://192.168.0.140:30061/trailv2/api/iot/paint/token')
+    console.log(JSON.stringify(data))
     webrtcWss.value = data.wss
     webrtcToken.value = data.token
     liveKitRoomInit()
     initCanvas()
 }
-
 
 // 开始共享屏幕
 const startSharing = async (sourceId) => {
@@ -109,7 +109,7 @@ const liveKitRoomInit = async () => {
         }
         if (reconnectIndex == 2) {
             console.log('正在连接中')
-            await room.connect(webrtcWss.value, webrtcToken).finally(() => {
+            await room.connect(webrtcWss.value, webrtcToken.value).finally(() => {
                 reconnectIndex = 0
             })
             // 开始屏幕共享

@@ -162,6 +162,8 @@ try {
 
         return false;
     }
+    app.commandLine.appendSwitch('ignore-certificate-errors')
+    
     app.whenReady().then(async () => {
         // const hasPermission = await requestScreenCapturePermission();
 
@@ -176,15 +178,17 @@ try {
         // createOverlayWindow()
     })
     // 解决9.x跨域异常问题
+    
     app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors')
 
     app.commandLine.appendArgument('no-sandbox')
     app.commandLine.appendArgument('disable-setuid-sandbox')
     app.commandLine.appendArgument('disable-web-security')
-    app.commandLine.appendArgument('ignore-certificate-errors', true)
+    app.commandLine.appendArgument('ignore-certificate-errors')
 
     app.commandLine.appendSwitch('disable-site-isolation-trials')
     app.commandLine.appendSwitch('enable-quic')
+   
 } catch (error) {
 
 }
