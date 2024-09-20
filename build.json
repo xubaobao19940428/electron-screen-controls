@@ -68,7 +68,10 @@
 				"target": "deb",
 				"arch": ["arm64"]
 			}
-		]
+		],
+        "desktop":{
+            "Icon":"/usr/share/icons/hicolor/0x0/apps/electron-screen-controls.png"
+        }
 	},
 	"nsis": {
 		"oneClick": false,

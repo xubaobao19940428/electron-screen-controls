@@ -9,8 +9,9 @@ import { ref, onMounted, onBeforeMount } from 'vue'
 import { ipcRenderer } from 'electron'
 import { LogLevel, Room, RoomEvent, setLogExtension, Track } from 'livekit-client'
 // 变量声明
-const webrtcWss = ref('ws://192.168.0.140:7880')
+const webrtcWss = ref<string| null>('ws://192.168.0.140:7880')
 const webrtcToken = ref('')
+const serverUrl = ref<string| null>('https://192.168.0.140:30061')
 const devicePixelRatio = window.devicePixelRatio || 1
 const canvasCache = ref([]) // 缓存绘制数据
 const encoder = new TextEncoder()
@@ -26,9 +27,9 @@ const isDrawingPath = ref([])
 
 
 const getGraffitiToken = async () => {
-    let data = await ipcRenderer.invoke('fetch-data', 'https://192.168.0.140:30061/trailv2/api/iot/paint/token')
+    let data = await ipcRenderer.invoke('fetch-data', `https://${serverUrl.value}/trailv2/api/iot/paint/token`)
     console.log(JSON.stringify(data))
-    webrtcWss.value = data.wss
+    // webrtcWss.value = webrtcWss.value
     webrtcToken.value = data.token
     liveKitRoomInit()
     initCanvas()
@@ -150,6 +151,7 @@ const onParticipantsChanged = () => {
 
 // 接收绘制数据
 const handleDataReceived = (payload, participant, kind) => {
+    //不做消息处理不绘制
     const decoder = new TextDecoder()
     const strData = decoder.decode(payload)
     const messageData = JSON.parse(strData)
@@ -206,12 +208,12 @@ const scheduleCleanCanvas = (context, canvas) => {
             context.clearRect(0, 0, canvas.width, canvas.height) // 清空画布
 
             // // 重新绘制剩余路径
-            // canvasCache.value.forEach((pathGroup) => {
-            //     pathGroup.forEach((path) => drawPath(context, path, canvas))
-            // })
+            canvasCache.value.forEach((pathGroup) => {
+                pathGroup.forEach((path) => drawPath(context, path, canvas))
+            })
             console.timeEnd();
             // 递归调用，继续清除下一个
-            // scheduleCleanCanvas(context, canvas)
+            scheduleCleanCanvas(context, canvas)
         }
     }, 5000)
 }
@@ -264,6 +266,10 @@ onBeforeMount(() => {
 })
 
 onMounted(async () => {
+    if(localStorage.getItem('serverUrl')){
+        serverUrl.value = localStorage.getItem('serverUrl')
+        webrtcWss.value = localStorage.getItem('webrtcWsUrl')
+    }
     await getGraffitiToken()
     console.log()
 })

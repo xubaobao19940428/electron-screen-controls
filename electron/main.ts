@@ -3,6 +3,7 @@ import setIpc from './ipcMain'
 import path from 'path'
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
+let settingWindow: BrowserWindow | null = null
 let appTray: Tray | null = null;
 const returnTrayIcontPath = function () {
     let configFilePath = ''
@@ -14,7 +15,13 @@ const returnTrayIcontPath = function () {
     return configFilePath
 }
 const iconPath = returnTrayIcontPath()
-
+// 监听来自渲染进程的关闭设置窗口请求
+ipcMain.on('close-setting-window', () => {
+    if (settingWindow) {
+        settingWindow.close(); // 关闭设置窗口
+        settingWindow = null;  // 清空引用
+    }
+});
 /**
  * 创建系统托盘
  */
@@ -26,7 +33,37 @@ function createAppTray() {
             label: '开发者模式',
             type: 'radio',
             click: () => {
-                mainWindow?.webContents.openDevTools();
+
+                mainWindow?.webContents.openDevTools({ mode: 'detach' });
+            }
+        },
+        {
+            label: '设置',
+            type: 'radio',
+            click: () => {
+                if (settingWindow) {
+                    settingWindow.show()
+                } else {
+                    settingWindow = new BrowserWindow({
+                        width: 400,
+                        height: 500,
+                        webPreferences: {
+                            nodeIntegration: true,
+                            contextIsolation: false,
+                            backgroundThrottling: false,
+                        },
+                    })
+                    settingWindow.on('closed', () => {
+                        settingWindow = null; // 在窗口关闭时，重置窗口对象
+                    });
+                    if (process.env.VITE_DEV_SERVER_URL) {
+                        settingWindow.loadURL(process.env.VITE_DEV_SERVER_URL + '/#/setting')
+                    } else {
+                        settingWindow.loadFile(path.resolve(__dirname, '../dist/index.html'), {
+                            hash: '#/setting',
+                        });
+                    }
+                }
             }
         },
         {
@@ -49,8 +86,6 @@ function createAppTray() {
 try {
     setIpc.setDefaultMain()
     const createdWindow = () => {
-        // const { width, height} = screen.getPrimaryDisplay().workAreaSize
-        // const { x, y } = screen.getPrimaryDisplay().bounds;
         // 确保 screen 模块可用，并获取显示器信息
         const primaryDisplay = screen.getPrimaryDisplay();
 
@@ -97,40 +132,42 @@ try {
         //     }
         // });
     }
+    /**
+     * 创建一个over
+     */
+    // function createOverlayWindow() {
+    //     const { width, height } = screen.getPrimaryDisplay().workAreaSize
 
-    function createOverlayWindow() {
-        const { width, height } = screen.getPrimaryDisplay().workAreaSize
+    //     // 创建全屏透明窗口
+    //     overlayWindow = new BrowserWindow({
+    //         x: 0,
+    //         y: 0,
+    //         width: width,
+    //         height: height,
+    //         // fullscreen: true,
+    //         frame: false,
+    //         transparent: true, // 透明主窗口
+    //         alwaysOnTop: true, // 主窗口始终在最上层
+    //         skipTaskbar: true, // 主窗口不出现在任务栏中
+    //         webPreferences: {
+    //             nodeIntegration: true,
+    //             contextIsolation: false,
+    //             backgroundThrottling: false,
+    //         },
+    //     })
 
-        // 创建全屏透明窗口
-        overlayWindow = new BrowserWindow({
-            x: 0,
-            y: 0,
-            width: width,
-            height: height,
-            // fullscreen: true,
-            frame: false,
-            transparent: true, // 透明主窗口
-            alwaysOnTop: true, // 主窗口始终在最上层
-            skipTaskbar: true, // 主窗口不出现在任务栏中
-            webPreferences: {
-                nodeIntegration: true,
-                contextIsolation: false,
-                backgroundThrottling: false,
-            },
-        })
+    //     // overlayWindow.loadURL('http://localhost:5173/#/overlay') // 加载包含 Canvas 的页面
+    //     console.log(process.env.VITE_DEV_SERVER_URL)
+    //     if (process.env.VITE_DEV_SERVER_URL) {
+    //         overlayWindow.loadURL(process.env.VITE_DEV_SERVER_URL + '/#/overlay')
+    //     } else {
+    //         overlayWindow.loadFile(path.resolve(__dirname, '../dist/index.html'), {
+    //             hash: '#/overlay',
+    //         });
+    //     }
+    //     overlayWindow.setIgnoreMouseEvents(true)
 
-        // overlayWindow.loadURL('http://localhost:5173/#/overlay') // 加载包含 Canvas 的页面
-        console.log(process.env.VITE_DEV_SERVER_URL)
-        if (process.env.VITE_DEV_SERVER_URL) {
-            overlayWindow.loadURL(process.env.VITE_DEV_SERVER_URL + '/#/overlay')
-        } else {
-            overlayWindow.loadFile(path.resolve(__dirname, '../dist/index.html'), {
-                hash: '#/overlay',
-            });
-        }
-        overlayWindow.setIgnoreMouseEvents(true)
-
-    }
+    // }
 
     app.on('window-all-closed', () => {
         mainWindow = null
@@ -163,7 +200,7 @@ try {
         return false;
     }
     app.commandLine.appendSwitch('ignore-certificate-errors')
-    
+
     app.whenReady().then(async () => {
         // const hasPermission = await requestScreenCapturePermission();
 
@@ -178,7 +215,7 @@ try {
         // createOverlayWindow()
     })
     // 解决9.x跨域异常问题
-    
+    app.disableHardwareAcceleration();
     app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors')
 
     app.commandLine.appendArgument('no-sandbox')
@@ -188,7 +225,7 @@ try {
 
     app.commandLine.appendSwitch('disable-site-isolation-trials')
     app.commandLine.appendSwitch('enable-quic')
-   
+
 } catch (error) {
 
 }

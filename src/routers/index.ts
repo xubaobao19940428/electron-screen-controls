@@ -24,6 +24,11 @@ const routes: RouteRecordRaw[] = [
         path: '/overlay',
         name: 'overlay',
         component: () => import('@/views/overlay.vue')
+    },
+    {
+        path: '/setting',
+        name: 'Setting',
+        component: () => import('@/views/setting/setting.vue')
     }
 ]
 console.log(routes)
