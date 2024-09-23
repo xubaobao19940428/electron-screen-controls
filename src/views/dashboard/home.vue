@@ -9,20 +9,20 @@ import { ref, onMounted, onBeforeMount } from 'vue'
 import { ipcRenderer } from 'electron'
 import { LogLevel, Room, RoomEvent, setLogExtension, Track } from 'livekit-client'
 // 变量声明
-const webrtcWss = ref<string| null>('ws://192.168.0.140:7880')
+const webrtcWss = ref<string | null>('ws://192.168.0.140:7880')
 const webrtcToken = ref('')
-const serverUrl = ref<string| null>('https://192.168.0.140:30061')
+const serverUrl = ref<string | null>('https://192.168.0.140:30061')
 const devicePixelRatio = window.devicePixelRatio || 1
 const canvasCache = ref([]) // 缓存绘制数据
 const encoder = new TextEncoder()
 const isDrawing = ref(false) // 控制绘图状态
-let cleanCanvasTimer = null // 用于清除画布的定时器
+let cleanCanvasTimer: string | number | NodeJS.Timeout | null | undefined = null // 用于清除画布的定时器
 let connectTimer = null // 重连定时器
-let room = null // WebRTC 房间对象
+let room: Room | null = null // WebRTC 房间对象
 let reconnectTimer: number | null | undefined = null
 const participants = ref([]) // 存储参与者列表
 const fullscreenCanvas = ref(null) // 画布引用
-
+const whetherToPaint = ref<boolean>(false)
 const isDrawingPath = ref([])
 
 
@@ -36,13 +36,13 @@ const getGraffitiToken = async () => {
 }
 
 // 开始共享屏幕
-const startSharing = async (sourceId) => {
+const startSharing = async (sourceId: string) => {
     const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
     })
     const screenTrack = stream.getVideoTracks()[0]
-    room.localParticipant.publishTrack(screenTrack, {
+    room?.localParticipant.publishTrack(screenTrack, {
         name: '屏幕分享',
         source: Track.Source.ScreenShare,
         stopMicTrackOnMute: true,
@@ -54,7 +54,7 @@ const startSharing = async (sourceId) => {
             data: tabBarCoefficient,
         })
         const sendData = encoder.encode(messageData)
-        room.localParticipant.publishData(sendData)
+        room?.localParticipant.publishData(sendData)
 
     })
 
@@ -110,7 +110,7 @@ const liveKitRoomInit = async () => {
         }
         if (reconnectIndex == 2) {
             console.log('正在连接中')
-            await room.connect(webrtcWss.value, webrtcToken.value).finally(() => {
+            await room?.connect(webrtcWss.value, webrtcToken.value).finally(() => {
                 reconnectIndex = 0
             })
             // 开始屏幕共享
@@ -121,7 +121,7 @@ const liveKitRoomInit = async () => {
 }
 
 // 处理订阅轨道
-const handleTrackSubscribed = (track) => {
+const handleTrackSubscribed = (track: Track) => {
     console.log('订阅轨道:')
     onParticipantsChanged()
 }
@@ -142,15 +142,15 @@ const onParticipantsChanged = () => {
             data: tabBarCoefficient,
         })
         const sendData = encoder.encode(messageData)
-        room.localParticipant.publishData(sendData)
+        room?.localParticipant.publishData(sendData)
 
     })
     const remotes = Array.from(room.remoteParticipants.values())
-    participants.value = [room.localParticipant, ...remotes]
+    participants.value = [room?.localParticipant, ...remotes]
 }
 
 // 接收绘制数据
-const handleDataReceived = (payload, participant, kind) => {
+const handleDataReceived = (payload: AllowSharedBufferSource | undefined, participant: any, kind: any) => {
     //不做消息处理不绘制
     const decoder = new TextDecoder()
     const strData = decoder.decode(payload)
@@ -159,27 +159,30 @@ const handleDataReceived = (payload, participant, kind) => {
     // console.log('接收到的数据', data, devicePixelRatio)
     const canvas = fullscreenCanvas.value
     const context = canvas ? canvas.getContext('2d') : null
+    //涂鸦
+    if (whetherToPaint.value) {
+        if (messageData.action === 'Move' && context) {
+            isDrawing.value = true
+            cancelCleanCanvasTimer()
 
-    if (messageData.action === 'Move' && context) {
-        isDrawing.value = true
-        cancelCleanCanvasTimer()
+            // 遍历绘制数据
+            data.forEach((item: any) => {
+                drawPath(context, item, canvas)
+                isDrawingPath.value.push(item)
+            })
+        } else if (messageData.action === 'End') {
+            isDrawing.value = false
+            console.log('结束数据', data)
+            canvasCache.value.push(JSON.parse(JSON.stringify((isDrawingPath.value)))) // 深拷贝
+            isDrawingPath.value = []
 
-        // 遍历绘制数据
-        data.forEach((item) => {
-            drawPath(context, item, canvas)
-            isDrawingPath.value.push(item)
-        })
-    } else if (messageData.action === 'End') {
-        isDrawing.value = false
-        console.log('结束数据', data)
-        canvasCache.value.push(JSON.parse(JSON.stringify(isDrawingPath.value)))
-        isDrawingPath.value = []
-
-        scheduleCleanCanvas(context, canvas)
+            scheduleCleanCanvas(context, canvas)
+        }
     }
+
 }
 // 绘制路径
-const drawPath = (context, item, canvas) => {
+const drawPath = (context: { strokeStyle: string; lineJoin: string; lineCap: string; lineWidth: number; beginPath: () => void; moveTo: (arg0: number, arg1: number) => void; lineTo: (arg0: number, arg1: number) => void; stroke: () => void; }, item: { videoWidth: number; videoHeight: number; startX: number; startY: number; endX: number; endY: number; }, canvas: { width: number; height: number; } | null) => {
 
     const scaleX = canvas.width / item.videoWidth / devicePixelRatio;
     const scaleY = canvas.height / item.videoHeight / devicePixelRatio;;
@@ -198,18 +201,18 @@ const drawPath = (context, item, canvas) => {
 }
 
 // 定时按顺序清除画布
-const scheduleCleanCanvas = (context, canvas) => {
+const scheduleCleanCanvas = (context: { clearRect: (arg0: number, arg1: number, arg2: any, arg3: any) => void; }, canvas: { width: any; height: any; } | null) => {
     cancelCleanCanvasTimer()
     console.time();
     cleanCanvasTimer = setTimeout(() => {
         if (!isDrawing.value && canvasCache.value.length > 0) {
-            // const oldPaths = canvasCache.value.shift() // 取出最早的一段绘制路径
-            canvasCache.value = []
+            canvasCache.value.shift() // 取出最早的一段绘制路径
+            // canvasCache.value = []
             context.clearRect(0, 0, canvas.width, canvas.height) // 清空画布
 
             // // 重新绘制剩余路径
             canvasCache.value.forEach((pathGroup) => {
-                pathGroup.forEach((path) => drawPath(context, path, canvas))
+                pathGroup.forEach((path: any) => drawPath(context, path, canvas))
             })
             console.timeEnd();
             // 递归调用，继续清除下一个
@@ -227,7 +230,7 @@ const cancelCleanCanvasTimer = () => {
 }
 
 // 处理断开连接
-const handleDisconnect = (reason) => {
+const handleDisconnect = (reason: any) => {
     console.log('reason', reason)
     // if (reason !== 1) {
     //     participants.value = []
@@ -263,12 +266,17 @@ onBeforeMount(() => {
         window.clearTimeout(reconnectTimer)
         reconnectTimer = null
     }
+    if (room) {
+        room.disconnect()
+    }
 })
 
 onMounted(async () => {
-    if(localStorage.getItem('serverUrl')){
+    if (localStorage.getItem('serverUrl')) {
         serverUrl.value = localStorage.getItem('serverUrl')
-        webrtcWss.value = localStorage.getItem('webrtcWsUrl')
+        webrtcWss.value = 'ws://' + localStorage.getItem('webrtcWsUrl')
+        const storedValue = localStorage.getItem('whetherToPaint');
+        whetherToPaint.value = storedValue === 'true' ? true : storedValue === 'false' ? false : false;
     }
     await getGraffitiToken()
     console.log()

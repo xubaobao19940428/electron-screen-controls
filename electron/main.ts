@@ -1,10 +1,11 @@
-import { app, BrowserWindow, systemPreferences, screen, ipcMain, Tray, Menu } from 'electron';
+import { app, BrowserWindow, systemPreferences, screen, ipcMain, Tray, Menu, dialog } from 'electron';
 import setIpc from './ipcMain'
 import path from 'path'
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let settingWindow: BrowserWindow | null = null
 let appTray: Tray | null = null;
+const gotTheLock = app.requestSingleInstanceLock(); // 确保应用只启动一个实例
 const returnTrayIcontPath = function () {
     let configFilePath = ''
     if (process.env.NODE_ENV === 'development') {
@@ -22,6 +23,7 @@ ipcMain.on('close-setting-window', () => {
         settingWindow = null;  // 清空引用
     }
 });
+
 /**
  * 创建系统托盘
  */
@@ -66,6 +68,14 @@ function createAppTray() {
                 }
             }
         },
+        // {
+        //     label: '休息哦啊话',
+        //     type: 'radio',
+        //     click: () => {
+        //         mainWindow?.minimize() // 关闭窗口
+        //         // app.quit(); // 完全退出应用
+        //     }
+        // },
         {
             label: '关闭',
             type: 'radio',
@@ -111,6 +121,31 @@ try {
                 backgroundThrottling: false,
             }
         })
+        // 监听窗口最小化事件
+        mainWindow.on('minimize', (event) => {
+            // 阻止窗口默认的最小化行为
+            event.preventDefault();
+
+            // 弹出确认对话框
+            dialog.showMessageBox(mainWindow, {
+                type: 'question',
+                buttons: ['确认', '取消'],
+                defaultId: 0, // 默认选择确认
+                cancelId: 1, // 取消按钮的索引
+                title: '确认最小化',
+                message: '确定要最小化窗口吗？'
+            }).then(result => {
+                if (result.response === 0) { // 如果点击了确认
+                    // mainWindow?.minimize(); // 手动最小化窗口
+                } else {
+                    mainWindow?.restore(); // 如果点击了取消，恢复窗口
+                }
+            });
+        });
+
+        mainWindow.on('restore', () => {
+            console.log('窗口已恢复');
+        });
         if (process.env.VITE_DEV_SERVER_URL) {
             mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
         } else {
@@ -132,99 +167,84 @@ try {
         //     }
         // });
     }
-    /**
-     * 创建一个over
-     */
-    // function createOverlayWindow() {
-    //     const { width, height } = screen.getPrimaryDisplay().workAreaSize
+    if (!gotTheLock) {
+        // 如果已经有一个实例在运行，则退出新实例
+        app.quit();
+    } else {
+        app.on('second-instance', (event, commandLine, workingDirectory) => {
+            // 当试图启动第二个实例时，将现有实例的窗口带到前台
+            if (mainWindow) {
+                if (mainWindow.isMinimized()) {
+                    mainWindow.restore();
+                }
+                mainWindow.focus();
+            }
+        });
 
-    //     // 创建全屏透明窗口
-    //     overlayWindow = new BrowserWindow({
-    //         x: 0,
-    //         y: 0,
-    //         width: width,
-    //         height: height,
-    //         // fullscreen: true,
-    //         frame: false,
-    //         transparent: true, // 透明主窗口
-    //         alwaysOnTop: true, // 主窗口始终在最上层
-    //         skipTaskbar: true, // 主窗口不出现在任务栏中
-    //         webPreferences: {
-    //             nodeIntegration: true,
-    //             contextIsolation: false,
-    //             backgroundThrottling: false,
-    //         },
-    //     })
+        app.on('window-all-closed', () => {
+            mainWindow = null
+            app.quit()
+        })
+        app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+            //允许私有证书
+            event.preventDefault()
+            callback(true)
+        })
+        async function requestScreenCapturePermission() {
+            if (process.platform === 'darwin') {
+                const screenCapturePermission = systemPreferences.getMediaAccessStatus('screen');
+                console.log('Screen capture permission status:', screenCapturePermission);
 
-    //     // overlayWindow.loadURL('http://localhost:5173/#/overlay') // 加载包含 Canvas 的页面
-    //     console.log(process.env.VITE_DEV_SERVER_URL)
-    //     if (process.env.VITE_DEV_SERVER_URL) {
-    //         overlayWindow.loadURL(process.env.VITE_DEV_SERVER_URL + '/#/overlay')
-    //     } else {
-    //         overlayWindow.loadFile(path.resolve(__dirname, '../dist/index.html'), {
-    //             hash: '#/overlay',
-    //         });
-    //     }
-    //     overlayWindow.setIgnoreMouseEvents(true)
+                if (screenCapturePermission !== 'granted') {
+                    const result = await systemPreferences.askForMediaAccess('screen');
+                    console.log('Screen capture permission result:', result);
 
-    // }
+                    if (!result) {
+                        console.log('Screen capture permission denied');
+                    }
 
-    app.on('window-all-closed', () => {
-        mainWindow = null
-        app.quit()
-    })
-    app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-        //允许私有证书
-        event.preventDefault()
-        callback(true)
-    })
-    async function requestScreenCapturePermission() {
-        if (process.platform === 'darwin') {
-            const screenCapturePermission = systemPreferences.getMediaAccessStatus('screen');
-            console.log('Screen capture permission status:', screenCapturePermission);
-
-            if (screenCapturePermission !== 'granted') {
-                const result = await systemPreferences.askForMediaAccess('screen');
-                console.log('Screen capture permission result:', result);
-
-                if (!result) {
-                    console.log('Screen capture permission denied');
+                    return result;
                 }
 
-                return result;
+                return true;
             }
 
-            return true;
+            return false;
         }
+        app.commandLine.appendSwitch('ignore-certificate-errors')
 
-        return false;
+        app.whenReady().then(async () => {
+            // const hasPermission = await requestScreenCapturePermission();
+
+            // if (!hasPermission) {
+            //     console.error('Screen capture permission is required');
+            //     app.quit();
+            //     return;
+            // }
+            //创建系统托盘
+            createAppTray()
+            createdWindow()
+            // createOverlayWindow()
+        })
+        // 解决9.x跨域异常问题
+        app.disableHardwareAcceleration();
+        app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors')
+
+        app.commandLine.appendArgument('no-sandbox')
+        app.commandLine.appendArgument('disable-setuid-sandbox')
+        app.commandLine.appendArgument('disable-web-security')
+        app.commandLine.appendArgument('ignore-certificate-errors')
+
+        app.commandLine.appendSwitch('disable-site-isolation-trials')
+        app.commandLine.appendSwitch('enable-quic')
+
+        app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) {
+                createdWindow();
+            }
+        });
     }
-    app.commandLine.appendSwitch('ignore-certificate-errors')
 
-    app.whenReady().then(async () => {
-        // const hasPermission = await requestScreenCapturePermission();
-
-        // if (!hasPermission) {
-        //     console.error('Screen capture permission is required');
-        //     app.quit();
-        //     return;
-        // }
-        //创建系统托盘
-        createAppTray()
-        createdWindow()
-        // createOverlayWindow()
-    })
-    // 解决9.x跨域异常问题
-    app.disableHardwareAcceleration();
-    app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors')
-
-    app.commandLine.appendArgument('no-sandbox')
-    app.commandLine.appendArgument('disable-setuid-sandbox')
-    app.commandLine.appendArgument('disable-web-security')
-    app.commandLine.appendArgument('ignore-certificate-errors')
-
-    app.commandLine.appendSwitch('disable-site-isolation-trials')
-    app.commandLine.appendSwitch('enable-quic')
 
 } catch (error) {
 

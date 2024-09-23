@@ -13,6 +13,9 @@
             <el-form-item label="webrtcWsUrl:" required>
                 <el-input v-model="settingForm.webrtcWsUrl" placeholder="请输入webrtcWsUrl+端口"></el-input>
             </el-form-item>
+            <el-form-item label="是否绘画:" required>
+                <el-switch v-model="settingForm.whetherToPaint" active-text="绘画" inactive-text="不绘画" />
+            </el-form-item>
             <el-form-item>
                 <el-button type="primary" @click="saveSetting" plain>保存</el-button>
                 <el-button type="info" @click="closeSetting" plain>取消</el-button>
@@ -27,7 +30,8 @@ import { ipcRenderer } from 'electron'
 import { ElMessage } from 'element-plus'
 const settingForm = reactive({
     serverUrl: '',
-    webrtcWsUrl: ''
+    webrtcWsUrl: '',
+    whetherToPaint: false
 })
 const saveSetting = () => {
     if (!settingForm.serverUrl || !settingForm.webrtcWsUrl) {
@@ -36,6 +40,7 @@ const saveSetting = () => {
     }
     localStorage.setItem('serverUrl', settingForm.serverUrl)
     localStorage.setItem('webrtcWsUrl', settingForm.webrtcWsUrl)
+    localStorage.setItem('whetherToPaint', settingForm.whetherToPaint)
     ElMessage.success('保存成功,重启服务生效')
 
 }
@@ -44,8 +49,12 @@ const closeSetting = () => {
     ipcRenderer.send('close-setting-window'); // 发送消息给主进程，通知关闭窗口
 }
 onMounted(() => {
+    console.log(localStorage.getItem('whetherToPaint'))
     settingForm.serverUrl = localStorage.getItem('serverUrl') || ''
     settingForm.webrtcWsUrl = localStorage.getItem('webrtcWsUrl') || ''
+
+    const storedValue = localStorage.getItem('whetherToPaint');
+    settingForm.whetherToPaint = storedValue === 'true' ? true : storedValue === 'false' ? false : false;
 })
 </script>
 
