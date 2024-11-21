@@ -184,6 +184,7 @@ export default {
                     },
                     httpsAgent: agent // 使用自定义的 https agent 忽略证书验证
                 });
+                console.log('token',response.data)
                 return response.data.data;
             } catch (error) {
                 return { error: error.message };

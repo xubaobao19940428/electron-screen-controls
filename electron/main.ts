@@ -152,6 +152,7 @@ try {
             mainWindow.loadFile(path.resolve(__dirname, '../dist/index.html'));
         }
         mainWindow.setIgnoreMouseEvents(true)
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
         // getTaskbarHeight()
         // getStatusBarHeight()
         // 拦截窗口关闭事件，隐藏窗口而不是退出应用

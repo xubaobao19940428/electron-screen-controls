@@ -5,17 +5,33 @@
 </template>
 
 <script setup lang="ts" name="Home">
-import { ref, onMounted, onBeforeMount } from 'vue'
+import { ref, onMounted, reactive, onBeforeMount } from 'vue'
 import { ipcRenderer } from 'electron'
 import { LogLevel, Room, RoomEvent, setLogExtension, Track } from 'livekit-client'
+
+interface DrawingPath {
+    startX?: number;
+    startY?: number;
+    endX?: number;
+    endY?: number;
+    endTime?: number;
+}
+
+interface ParticipantCache {
+    [key: string]: DrawingPath[][];
+}
+interface IsDrawing {
+    [key: string]: boolean
+}
+const canvasCache = reactive<ParticipantCache>({});
 // 变量声明
 const webrtcWss = ref<string | null>('ws://192.168.0.140:7880')
 const webrtcToken = ref('')
 const serverUrl = ref<string | null>('https://192.168.0.140:30061')
 const devicePixelRatio = window.devicePixelRatio || 1
-const canvasCache = ref([]) // 缓存绘制数据
+// const canvasCache = ref([]) // 缓存绘制数据
 const encoder = new TextEncoder()
-const isDrawing = ref(false) // 控制绘图状态
+const isDrawing = reactive<IsDrawing>({}) // 控制绘图状态
 let cleanCanvasTimer: string | number | NodeJS.Timeout | null | undefined = null // 用于清除画布的定时器
 let connectTimer = null // 重连定时器
 let room: Room | null = null // WebRTC 房间对象
@@ -23,7 +39,7 @@ let reconnectTimer: number | null | undefined = null
 const participants = ref([]) // 存储参与者列表
 const fullscreenCanvas = ref(null) // 画布引用
 const whetherToPaint = ref<boolean>(false)
-const isDrawingPath = ref([])
+const isDrawingPath = reactive<ParticipantCache>({})
 
 
 const getGraffitiToken = async () => {
@@ -156,34 +172,41 @@ const handleDataReceived = (payload: AllowSharedBufferSource | undefined, partic
     const strData = decoder.decode(payload)
     const messageData = JSON.parse(strData)
     const data = messageData.param
+    let identity = participant.identity
     // console.log('接收到的数据', data, devicePixelRatio)
     const canvas = fullscreenCanvas.value
     const context = canvas ? canvas.getContext('2d') : null
     //涂鸦
     if (whetherToPaint.value) {
         if (messageData.action === 'Move' && context) {
-            isDrawing.value = true
-            cancelCleanCanvasTimer()
-
+            isDrawing[identity] = true
             // 遍历绘制数据
             data.forEach((item: any) => {
                 drawPath(context, item, canvas)
-                isDrawingPath.value.push(item)
+                if (!isDrawingPath[identity]) {
+                    isDrawingPath[identity] = [];
+                }
+                isDrawingPath[identity].push(item)
             })
         } else if (messageData.action === 'End') {
-            isDrawing.value = false
+            isDrawing[identity] = false
             console.log('结束数据', data)
-            canvasCache.value.push(JSON.parse(JSON.stringify((isDrawingPath.value)))) // 深拷贝
-            isDrawingPath.value = []
+            if (!canvasCache[identity]) {
+                canvasCache[identity] = [];
+            }
+            canvasCache[identity].push(JSON.parse(JSON.stringify(isDrawingPath[identity]))); // 深拷贝
+            canvasCache[identity][canvasCache[identity].length - 1].push({
+                endTime: data.endTime,
+            });
+            console.log('canvasCache', canvasCache)
+            isDrawingPath[identity] = []
 
-            scheduleCleanCanvas(context, canvas)
         }
     }
 
 }
 // 绘制路径
 const drawPath = (context: { strokeStyle: string; lineJoin: string; lineCap: string; lineWidth: number; beginPath: () => void; moveTo: (arg0: number, arg1: number) => void; lineTo: (arg0: number, arg1: number) => void; stroke: () => void; }, item: { videoWidth: number; videoHeight: number; startX: number; startY: number; endX: number; endY: number; }, canvas: { width: number; height: number; } | null) => {
-
     const scaleX = canvas.width / item.videoWidth / devicePixelRatio;
     const scaleY = canvas.height / item.videoHeight / devicePixelRatio;;
     const startX = item.startX * scaleX;
@@ -202,32 +225,56 @@ const drawPath = (context: { strokeStyle: string; lineJoin: string; lineCap: str
 
 // 定时按顺序清除画布
 const scheduleCleanCanvas = (context: { clearRect: (arg0: number, arg1: number, arg2: any, arg3: any) => void; }, canvas: { width: any; height: any; } | null) => {
-    cancelCleanCanvasTimer()
     console.time();
-    cleanCanvasTimer = setTimeout(() => {
-        if (!isDrawing.value && canvasCache.value.length > 0) {
-            canvasCache.value.shift() // 取出最早的一段绘制路径
-            // canvasCache.value = []
-            context.clearRect(0, 0, canvas.width, canvas.height) // 清空画布
-
-            // // 重新绘制剩余路径
-            canvasCache.value.forEach((pathGroup) => {
-                pathGroup.forEach((path: any) => drawPath(context, path, canvas))
-            })
-            console.timeEnd();
-            // 递归调用，继续清除下一个
-            scheduleCleanCanvas(context, canvas)
-        }
-    }, 5000)
+    cleanCanvasTimer = window.setInterval(() => {
+        Object.keys(canvasCache).forEach((key) => {
+            if (canvasCache[key].length > 1 || (canvasCache[key].length === 1 && isDrawing[key] === false)) {
+                let deletePath = canvasCache[key][0]
+                let deletePathEndTime = deletePath[deletePath.length - 1] ? deletePath[deletePath.length - 1].endTime : 0
+                if (deletePathEndTime && typeof deletePathEndTime === 'number' && new Date().getTime() - deletePathEndTime >= 5000) {
+                    context.clearRect(0, 0, canvas?.width, canvas?.height) // 清空画布
+                    let oldPath = canvasCache[key].shift()
+                    for (var newKey in canvasCache) {
+                        canvasCache[newKey].map(item => {
+                            item.map(item => {
+                                drawPath(context, item, canvas)
+                                // context.strokeStyle = 'red';
+                                // context.lineJoin = 'round';
+                                // context.lineCap = 'round';
+                                // context.lineWidth = 2;
+                                // context.beginPath();
+                                // context.moveTo(item.startX, item.startY);
+                                // context.lineTo(item.endX, item.endY);
+                                // context.stroke();
+                            });
+                        });
+                    }
+                }
+            }
+        })
+        // if (canvasCache.value.length > 1 || (canvasCache.value.length === 1 && isDrawing.value === false)) {
+        //     let deletePath = canvasCache.value[0]
+        //     let deletePathEndTime = deletePath[deletePath.length - 1] ? deletePath[deletePath.length - 1].endTime : 0
+        //     if (deletePathEndTime && typeof deletePathEndTime === 'number' && new Date().getTime() - deletePathEndTime >= 5000) {
+        //         context.clearRect(0, 0, canvas?.width, canvas?.height);
+        //         let oldPath = canvasCache.value.shift()
+        //         canvasCache.value.map(item => {
+        //             item.map(item => {
+        //                 context.strokeStyle = 'red';
+        //                 context.lineJoin = 'round';
+        //                 context.lineCap = 'round';
+        //                 context.lineWidth = 2;
+        //                 context.beginPath();
+        //                 context.moveTo(item.startX, item.startY);
+        //                 context.lineTo(item.endX, item.endY);
+        //                 context.stroke();
+        //             });
+        //         });
+        //     }
+        // }
+    }, 1000)
 }
 
-// 取消清理画布的定时器
-const cancelCleanCanvasTimer = () => {
-    if (cleanCanvasTimer) {
-        clearTimeout(cleanCanvasTimer)
-        cleanCanvasTimer = null
-    }
-}
 
 // 处理断开连接
 const handleDisconnect = (reason: any) => {
@@ -279,7 +326,9 @@ onMounted(async () => {
         whetherToPaint.value = storedValue === 'true' ? true : storedValue === 'false' ? false : false;
     }
     await getGraffitiToken()
-    console.log()
+    const canvas = fullscreenCanvas.value
+    const context = canvas ? canvas.getContext('2d') : null
+    scheduleCleanCanvas(context, canvas)
 })
 </script>
 
