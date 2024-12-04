@@ -1,13 +1,18 @@
 <template>
     <div class="container">
         <canvas ref="fullscreenCanvas" class="fullscreen-canvas"></canvas>
+        <!-- <div class="participants"> -->
+        <div class="participant" v-for="participant in participants" :key="participant.identity"
+            :class="participant.name">
+            {{ participant.name }}
+        </div>
     </div>
 </template>
 
 <script setup lang="ts" name="Home">
 import { ref, onMounted, reactive, onBeforeMount } from 'vue'
 import { ipcRenderer } from 'electron'
-import { LogLevel, Room, RoomEvent, setLogExtension, Track } from 'livekit-client'
+import { LogLevel, Room, RoomEvent, setLogExtension, Track, Participant } from 'livekit-client'
 
 interface DrawingPath {
     startX?: number;
@@ -36,7 +41,7 @@ let cleanCanvasTimer: string | number | NodeJS.Timeout | null | undefined = null
 let connectTimer = null // 重连定时器
 let room: Room | null = null // WebRTC 房间对象
 let reconnectTimer: number | null | undefined = null
-const participants = ref([]) // 存储参与者列表
+const participants = ref<Array<Participant>>([]) // 存储参与者列表
 const fullscreenCanvas = ref(null) // 画布引用
 const whetherToPaint = ref<boolean>(false)
 const isDrawingPath = reactive<ParticipantCache>({})
@@ -182,7 +187,7 @@ const handleDataReceived = (payload: AllowSharedBufferSource | undefined, partic
             isDrawing[identity] = true
             // 遍历绘制数据
             data.forEach((item: any) => {
-                drawPath(context, item, canvas)
+                drawPath(context, item, canvas, identity)
                 if (!isDrawingPath[identity]) {
                     isDrawingPath[identity] = [];
                 }
@@ -200,13 +205,19 @@ const handleDataReceived = (payload: AllowSharedBufferSource | undefined, partic
             });
             console.log('canvasCache', canvasCache)
             isDrawingPath[identity] = []
+            const elements = document.getElementsByClassName(identity);
+            if (elements.length > 0) {
+                const element = elements[0] as HTMLElement;
+                element.style.left = `${0}px`;
+                element.style.top = `${0}px`;
+            }
 
         }
     }
 
 }
 // 绘制路径
-const drawPath = (context: { strokeStyle: string; lineJoin: string; lineCap: string; lineWidth: number; beginPath: () => void; moveTo: (arg0: number, arg1: number) => void; lineTo: (arg0: number, arg1: number) => void; stroke: () => void; }, item: { videoWidth: number; videoHeight: number; startX: number; startY: number; endX: number; endY: number; }, canvas: { width: number; height: number; } | null) => {
+const drawPath = (context: { strokeStyle: string; lineJoin: string; lineCap: string; lineWidth: number; beginPath: () => void; moveTo: (arg0: number, arg1: number) => void; lineTo: (arg0: number, arg1: number) => void; stroke: () => void; }, item: { videoWidth: number; videoHeight: number; startX: number; startY: number; endX: number; endY: number; }, canvas: { width: number; height: number; } | null, identity = '') => {
     const scaleX = canvas.width / item.videoWidth / devicePixelRatio;
     const scaleY = canvas.height / item.videoHeight / devicePixelRatio;;
     const startX = item.startX * scaleX;
@@ -221,6 +232,14 @@ const drawPath = (context: { strokeStyle: string; lineJoin: string; lineCap: str
     context.moveTo(startX, startY);
     context.lineTo(endX, endY);
     context.stroke();
+    if (identity) {
+        const elements = document.getElementsByClassName(identity);
+        if (elements.length > 0) {
+            const element = elements[0] as HTMLElement;
+            element.style.left = `${endX + 20}px`;
+            element.style.top = `${endY + 20}px`;
+        }
+    }
 }
 
 // 定时按顺序清除画布
@@ -238,40 +257,12 @@ const scheduleCleanCanvas = (context: { clearRect: (arg0: number, arg1: number, 
                         canvasCache[newKey].map(item => {
                             item.map(item => {
                                 drawPath(context, item, canvas)
-                                // context.strokeStyle = 'red';
-                                // context.lineJoin = 'round';
-                                // context.lineCap = 'round';
-                                // context.lineWidth = 2;
-                                // context.beginPath();
-                                // context.moveTo(item.startX, item.startY);
-                                // context.lineTo(item.endX, item.endY);
-                                // context.stroke();
                             });
                         });
                     }
                 }
             }
         })
-        // if (canvasCache.value.length > 1 || (canvasCache.value.length === 1 && isDrawing.value === false)) {
-        //     let deletePath = canvasCache.value[0]
-        //     let deletePathEndTime = deletePath[deletePath.length - 1] ? deletePath[deletePath.length - 1].endTime : 0
-        //     if (deletePathEndTime && typeof deletePathEndTime === 'number' && new Date().getTime() - deletePathEndTime >= 5000) {
-        //         context.clearRect(0, 0, canvas?.width, canvas?.height);
-        //         let oldPath = canvasCache.value.shift()
-        //         canvasCache.value.map(item => {
-        //             item.map(item => {
-        //                 context.strokeStyle = 'red';
-        //                 context.lineJoin = 'round';
-        //                 context.lineCap = 'round';
-        //                 context.lineWidth = 2;
-        //                 context.beginPath();
-        //                 context.moveTo(item.startX, item.startY);
-        //                 context.lineTo(item.endX, item.endY);
-        //                 context.stroke();
-        //             });
-        //         });
-        //     }
-        // }
     }, 1000)
 }
 
@@ -279,19 +270,6 @@ const scheduleCleanCanvas = (context: { clearRect: (arg0: number, arg1: number, 
 // 处理断开连接
 const handleDisconnect = (reason: any) => {
     console.log('reason', reason)
-    // if (reason !== 1) {
-    //     participants.value = []
-    //     connectTimer = window.setTimeout(() => {
-    //         room.connect(webrtcWss.value, webrtcToken.value).then(async () => {
-    //             const screenId = await ipcRenderer.invoke('screen_share')
-    //             startSharing(screenId[0].id)
-    //         }).catch((error) => {
-    //             console.warn(error)
-    //             // 开始屏幕共享
-
-    //         })
-    //     }, 5000)
-    // }
 }
 
 // 初始化 Canvas
@@ -348,6 +326,20 @@ onMounted(async () => {
         z-index: 1000;
         pointer-events: none;
         background-color: transparent;
+    }
+
+    .participant {
+        position: absolute;
+        width: max-content;
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        left: 0;
+        right: 0;
+        font-size: 12px;
+        padding: 3px;
+        background-color: rgba(64, 158, 255, 0.9);
+        // opacity: ;
     }
 }
 </style>
