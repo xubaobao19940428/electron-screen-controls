@@ -132,8 +132,8 @@ try {
                 buttons: ['确认', '取消'],
                 defaultId: 0, // 默认选择确认
                 cancelId: 1, // 取消按钮的索引
-                title: '确认最小化',
-                message: '确定要最小化窗口吗？'
+                title: '庭审同屏绘画',
+                message: '庭审同屏绘画无法最小化请按确认或取消都可以'
             }).then(result => {
                 if (result.response === 0) { // 如果点击了确认
                     // mainWindow?.minimize(); // 手动最小化窗口

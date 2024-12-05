@@ -60,7 +60,7 @@ const getGraffitiToken = async () => {
 const startSharing = async (sourceId: string) => {
     const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
+        video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId },frameRate: 30 },
     })
     const screenTrack = stream.getVideoTracks()[0]
     room?.localParticipant.publishTrack(screenTrack, {
