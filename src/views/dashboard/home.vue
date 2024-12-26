@@ -3,7 +3,7 @@
         <canvas ref="fullscreenCanvas" class="fullscreen-canvas"></canvas>
         <!-- <div class="participants"> -->
         <div class="participant" v-for="participant in participants" :key="participant.identity"
-            :class="participant.name">
+            :class="participant.identity">
             {{ participant.name }}
         </div>
     </div>
@@ -48,7 +48,7 @@ const isDrawingPath = reactive<ParticipantCache>({})
 
 
 const getGraffitiToken = async () => {
-    let data = await ipcRenderer.invoke('fetch-data', `http://${serverUrl.value}/trailv2/api/iot/paint/token`)
+    let data = await ipcRenderer.invoke('fetch-data', `https://${serverUrl.value}/trailv2/api/iot/paint/token`)
     console.log(JSON.stringify(data))
     // webrtcWss.value = webrtcWss.value
     webrtcToken.value = data.token
