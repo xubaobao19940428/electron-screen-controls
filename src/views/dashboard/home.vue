@@ -48,7 +48,7 @@ const isDrawingPath = reactive<ParticipantCache>({})
 
 
 const getGraffitiToken = async () => {
-    let data = await ipcRenderer.invoke('fetch-data', `https://${serverUrl.value}/trailv2/api/iot/paint/token`)
+    let data = await ipcRenderer.invoke('fetch-data', `${serverUrl.value}/trailv2/api/iot/paint/token`)
     console.log(JSON.stringify(data))
     // webrtcWss.value = webrtcWss.value
     webrtcToken.value = data.token
@@ -299,7 +299,7 @@ onBeforeMount(() => {
 onMounted(async () => {
     if (localStorage.getItem('serverUrl')) {
         serverUrl.value = localStorage.getItem('serverUrl')
-        webrtcWss.value = 'ws://' + localStorage.getItem('webrtcWsUrl')
+        webrtcWss.value = localStorage.getItem('webrtcWsUrl')
         const storedValue = localStorage.getItem('whetherToPaint');
         whetherToPaint.value = storedValue === 'true' ? true : storedValue === 'false' ? false : false;
     }
