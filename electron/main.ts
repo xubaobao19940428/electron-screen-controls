@@ -1,4 +1,5 @@
 import { app, BrowserWindow, systemPreferences, screen, ipcMain, Tray, Menu, dialog } from 'electron';
+import AutoLaunch from 'auto-launch'; // 引入 auto-launch 模块
 import setIpc from './ipcMain'
 import path from 'path'
 let mainWindow: BrowserWindow | null = null
@@ -23,7 +24,40 @@ ipcMain.on('close-setting-window', () => {
         settingWindow = null;  // 清空引用
     }
 });
+// 定义应用开机自启
+const appAutoLauncher = new AutoLaunch({
+    name: '太振科技庭审同屏绘制', // 替换为你的应用名称
+    path: app.getPath('exe'), // Electron 应用的可执行文件路径
+});
+// 添加开机自启的方法
+async function enableAutoStart() {
+    try {
+        const isEnabled = await appAutoLauncher.isEnabled();
+        if (!isEnabled) {
+            await appAutoLauncher.enable();
+            console.log('开机自启已启用');
+        } else {
+            console.log('开机自启已启用，无需重复设置');
+        }
+    } catch (error) {
+        console.error('设置开机自启失败:', error);
+    }
+}
 
+// 取消开机自启的方法
+async function disableAutoStart() {
+    try {
+        const isEnabled = await appAutoLauncher.isEnabled();
+        if (isEnabled) {
+            await appAutoLauncher.disable();
+            console.log('开机自启已禁用');
+        } else {
+            console.log('开机自启未启用，无需禁用');
+        }
+    } catch (error) {
+        console.error('取消开机自启失败:', error);
+    }
+}
 /**
  * 创建系统托盘
  */
@@ -67,6 +101,20 @@ function createAppTray() {
                     }
                 }
             }
+        },
+        {
+            label: '启用开机自启',
+            type: 'radio',
+            click: () => {
+                enableAutoStart(); // 启用开机自启
+            },
+        },
+        {
+            label: '禁用开机自启',
+            type: 'radio',
+            click: () => {
+                disableAutoStart(); // 禁用开机自启
+            },
         },
         // {
         //     label: '休息哦啊话',
